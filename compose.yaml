@@ -1,0 +1,14 @@
+# PostgreSQL local de développement. Lié à 127.0.0.1 uniquement.
+services:
+  postgres:
+    image: postgres:17
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?définir POSTGRES_USER dans .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?définir POSTGRES_PASSWORD dans .env}
+      POSTGRES_DB: ${POSTGRES_DB:-actions}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:

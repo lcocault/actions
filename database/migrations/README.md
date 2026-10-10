@@ -1,5 +1,7 @@
 # Migrations PostgreSQL
 
-Emplacement réservé aux migrations versionnées : `database/migrations/`.
+Emplacement des migrations versionnées : `database/migrations/`.
 
-Aucune migration ni aucun schéma n’existe encore. Le mécanisme d’exécution et les commandes d’application/vérification seront choisis avant la première migration, après vérification de la compatibilité avec l’offre AlwaysData cible. Ne jamais lancer une migration sur un environnement opérationnel sans autorisation explicite.
+**Existant** : exécuteur `bin/migrate` (`php bin/migrate`, `php bin/migrate status`) et table de suivi `schema_migrations`; aucune migration de schéma métier. Refus si `APP_ENV` n’est ni `local` ni `test` (sauf `--allow-env=<APP_ENV>`, uniquement avec autorisation explicite).
+
+**Validé** (voir [docs/architecture.md](../../docs/architecture.md)) : fichiers SQL `NNNN_description.sql` appliqués dans l’ordre par `bin/migrate`, table de suivi `schema_migrations` avec checksum, transaction par migration, pas de migration « down ». Une migration appliquée n’est jamais réécrite : toute correction passe par une nouvelle migration. Ne jamais lancer une migration sur un environnement opérationnel sans autorisation explicite.

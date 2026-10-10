@@ -1,0 +1,43 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+require dirname(__DIR__) . '/vendor/autoload.php';
+
+use Actions\Infrastructure\Config;
+use Actions\Infrastructure\Database;
+use Actions\Infrastructure\Migrator;
+
+$command = 'migrate';
+$allowEnv = null;
+foreach (array_slice($argv, 1) as $arg) {
+    if ($arg === 'status' || $arg === 'migrate') {
+        $command = $arg;
+    } elseif (str_starts_with($arg, '--allow-env=')) {
+        $allowEnv = substr($arg, strlen('--allow-env='));
+    } else {
+        fwrite(STDERR, "Usage : php bin/migrate [status] [--allow-env=<APP_ENV>]\n");
+        exit(2);
+    }
+}
+
+try {
+    $config = Config::load();
+    if (!in_array($config->appEnv, ['local', 'test'], true) && $allowEnv !== $config->appEnv) {
+        fwrite(STDERR, "Refus : APP_ENV={$config->appEnv}. Migrations autorisées seulement en local/test (sauf --allow-env explicite et autorisation de l'utilisateur).\n");
+        exit(1);
+    }
+    $migrator = new Migrator(Database::connect($config), dirname(__DIR__) . '/database/migrations');
+    if ($command === 'status') {
+        $s = $migrator->status();
+        echo 'Appliquées : ' . (implode(', ', $s['applied']) ?: '(aucune)') . "\n";
+        echo 'En attente : ' . (implode(', ', $s['pending']) ?: '(aucune)') . "\n";
+    } else {
+        $done = $migrator->migrate();
+        echo $done === [] ? "Rien à appliquer.\n" : 'Appliquées : ' . implode(', ', $done) . "\n";
+    }
+} catch (Throwable $e) {
+    fwrite(STDERR, 'Erreur : ' . ($e instanceof PDOException ? 'accès à la base impossible (' . $e->getMessage() . ')' : $e->getMessage()) . "\n");
+    exit(1);
+}
