@@ -17,7 +17,7 @@ Légende des statuts : **existant** (dans le dépôt, vérifiable), **proposé**
 - **Validé** (2026-10-10, utilisateur) : zéro dépendance d'exécution, `phpunit/phpunit` en dev, PHP >= 8.3.
 - **Validé** (2026-10-10, utilisateur) : migrations en `NNNN_nom.sql`, table `schema_migrations` avec checksum, pas de « down », refus hors `local`/`test` sauf option explicite.
 - **Validé** (décisions de l'utilisateur transmises pour la tranche A, 2026-10-11) : titre fait seulement de tabulations/retours à la ligne refusé (validation de domaine, en plus du `CHECK`); ajout d'un lien déjà existant idempotent (succès, aucun doublon); date butée passée autorisée; suppression d'une tâche requise refusée avec la liste des dépendants; cycles et auto-dépendance refusés.
-- **Validé, non livré (tranche B)** : états `À faire` / `En cours` / `Terminée` par colonne d'état + `CHECK` (migration `0002`); terminer une tâche dont des prérequis ne sont pas terminés : refusé; terminer une tâche périodique crée une nouvelle occurrence (historique conservé). Voir « Cycle de vie (tranche B) ».
+- **Validé, non livré (tranche B)** : états `À faire` / `En cours` / `Terminée`, transitions, terminaison avec actions requises, occurrence d'une périodique, suppression (décisions explicites); Q1 à Q12 **validées par délégation** (non confirmées explicitement). Conception **proposée** (migration `0002`, erreurs, contrat REST) : voir « Cycle de vie (tranche B) ».
 - **Validé par l'Architecte** (2026-10-11), les deux écarts du Developer par rapport à l'esquisse de 0001 : voir « Schéma des tâches ».
 
 Les sections « Contrat REST » et « Contrat MCP » du squelette sont validées et implémentées; les autres sections « (proposé) » ci-dessous couvrant des points de cette liste (migrations, dépendances, PHP) ont le statut de la liste. Restent **proposés** ou **à vérifier** : tous les points « non vérifiés » AlwaysData, le contrat du portail, la procédure de démarrage détaillée, les variables de configuration et la convention de tests (acceptées de fait par le Developer, sans validation explicite de l'utilisateur).
@@ -197,7 +197,7 @@ Choix de types :
 - **Estimation en minutes entières** (`estimated_minutes integer > 0`) : triable, additionnable, sans ambiguïté de format; `interval` PostgreSQL écarté (sérialisation JSON/MCP plus lourde, sémantique jours/mois inutile). Les interfaces exposent des minutes entières.
 - **Catégorie en `text` + `CHECK`**, pas de type `ENUM` : ajouter une valeur ne demande qu'une nouvelle migration sur le `CHECK`, sans les contraintes d'`ALTER TYPE`. Valeurs exactes `Pro` et `Perso` (sensibles à la casse; la normalisation, si elle existe, est dans la couche Application).
 - **Périodicité** : `recurrence_interval` + `recurrence_unit` (valeurs anglaises stables en base, libellés français côté interfaces). La règle « la tâche se répète après sa date butée » est portée par la donnée; le calcul de la prochaine occurrence est un cas d'usage futur, hors schéma.
-- Identifiants `bigint` identité : opaques pour les clients. `updated_at` est positionné par la couche Application (pas de trigger, règle visible au même endroit que les autres). Aucune colonne de statut/« terminée » : absente du modèle validé (question 2).
+- Identifiants `bigint` identité : opaques pour les clients. `updated_at` est positionné par la couche Application (pas de trigger, règle visible au même endroit que les autres). Aucune colonne d'état dans 0001; ajoutée par la migration `0002` proposée (voir « Cycle de vie »).
 - Suppression : `ON DELETE RESTRICT` côté tâche requise, donc `DELETE` d'une tâche requise par d'autres échoue (SQLSTATE `23503`, contrainte `task_dependencies_required_task_id_fkey`); `ON DELETE CASCADE` côté `task_id` : supprimer une tâche retire ses propres prérequis (elle n'en a plus besoin), ce qui ne viole aucune règle validée.
 
 #### Refus des cycles indirects (proposé)
@@ -267,7 +267,7 @@ Règles transverses :
 - `addRequiredAction` : ordre des contrôles fixe : `taskId` connu, `requiredTaskId` connu, puis `INSERT ... ON CONFLICT (task_id, required_task_id) DO NOTHING` (idempotence **validée** : le lien existant renvoie un succès, sans doublon; le trigger ne produit pas de faux cycle sur un lien existant, car un graphe valide est acyclique). L'auto-dépendance (`taskId = requiredTaskId`, tâche connue) est refusée **par le `CHECK`** puis traduite, sans prévérification en PHP (pas de règle dupliquée). `(A, A)` avec `A` inconnue renvoie `TaskNotFound`.
 - `removeRequiredAction` : lien absent = succès (idempotent; **validé**, 2026-10-11).
 - `delete` : `DELETE` direct, **en autocommit** (instruction unique donc atomique; **validé par l'Architecte le 2026-10-11**, écart (c) du Developer accepté : une transaction explicite n'apporterait rien); `23503` -> la liste des dépendants est lue ensuite (`id`, `title`) et `TaskIsRequired` est levée. Tolérance documentée : si un lien est retiré entre le refus et cette lecture, `dependents` peut être incomplet ou vide, le refus restant exact au moment où il a eu lieu. Aucune prévérification (la base arbitre aussi la concurrence). Identifiant inconnu (0 ligne) : `TaskNotFound` (**validé**, non idempotent). Les liens propres de la tâche partent par `ON DELETE CASCADE`.
-- `list` : sans filtre ni pagination (outil mono-utilisateur); filtres/pagination = ajouts facultatifs compatibles, à demander au Product Owner si utiles.
+- `list` : sans pagination (outil mono-utilisateur); filtres `status`/`category` prévus en tranche B (voir « Cycle de vie »), ajout facultatif compatible.
 
 ### Validation (`TaskValidator`, proposé)
 
@@ -504,11 +504,112 @@ Non vérifiable par ces tests : appel HTTP réel (`php -S` + curl), à faire une
 
 Rien : les quatre points ont été validés le 2026-10-11 (voir les statuts en tête de section). Resserrer `Content-Type` (415) ou traiter les paramètres de requête serait une évolution future, à valider à part.
 
-## Cycle de vie (tranche B) — décisions validées, **non livrées**
+## Cycle de vie (tranche B) — conception du 2026-10-11, **non livrée**
 
-Validé (utilisateur) : états `À faire` / `En cours` / `Terminée`; colonne d'état + `CHECK` (migration `0002`); terminer avec des prérequis non terminés : refusé; terminer une tâche périodique : passe `Terminée` et crée une nouvelle occurrence, historique conservé. **Proposé (non validé)** : colonne `status text NOT NULL DEFAULT 'todo' CHECK (status IN ('todo','in_progress','done'))` (codes anglais en base, libellés français aux interfaces, comme les unités); terminaison = un cas d'usage `complete(id)` unique et transactionnel (changement d'état + création de l'occurrence); refus de terminer = exception `PrerequisitesNotDone` (409) avec la liste des prérequis non terminés. **Non tranché** (bloque la tranche B, voir `BACKLOG.md`) : champs et liens repris par la nouvelle occurrence, calcul de la prochaine échéance, réouverture, suppression des tâches terminées, autres transitions.
+Statuts. **Validé** = décision explicite de l'utilisateur (BACKLOG, « Décisions validées (cycle de vie) ») : états `À faire` / `En cours` / `Terminée`, créée « À faire »; transitions permises À faire → En cours → Terminée, et retour à « À faire » depuis les deux autres; toute autre refusée par une erreur de domaine nommée; terminer avec des actions requises non Terminées : refusé; terminer une périodique : passe `Terminée`, crée une occurrence (mêmes titre, catégorie, durée, description, périodicité; sans lien; « À faire »; échéance = ancienne + intervalle, fin de mois ramenée au dernier jour); suppression d'une Terminée : mêmes règles; périmètre migration `0002` + couche commune + REST (`PATCH`, filtres) + README. **Validé par délégation** = Q1 à Q12 du backlog, option recommandée retenue par la session principale, **non confirmée explicitement** par l'utilisateur. **Proposé** = tout le reste (noms, codes, statuts HTTP, SQL, organisation du code) : non opposable au Developer avant validation. Hors périmètre : MCP, portail, authentification.
 
-Compatibilité avec la tranche A : `0002` ajoute une colonne avec valeur par défaut, donc les `INSERT` nommant leurs colonnes restent valides; `Task` gagnera un champ `status` (ajout compatible); `update`/`create` de la tranche A n'acceptent pas l'état (la clé sera inconnue, `field_unknown`) : le changement d'état passera par des cas d'usage dédiés. Impact sur `TaskIsRequired` : inchangé tant que la décision « suppression des terminées » n'est pas prise.
+### Codes d'état
+
+Codes stables en base et dans les interfaces : `todo`, `in_progress`, `done` (anglais, comme les unités de périodicité); libellés français (« À faire », « En cours », « Terminée ») à la charge des interfaces d'affichage (portail, texte MCP). **Proposé.**
+
+### Migration `0002_task_status.sql` (proposé; le fichier fera foi une fois écrit)
+
+```sql
+ALTER TABLE tasks
+  ADD COLUMN status       text        NOT NULL DEFAULT 'todo',
+  ADD COLUMN completed_at timestamptz,
+  ADD CONSTRAINT tasks_status_valid CHECK (status IN ('todo', 'in_progress', 'done')),
+  ADD CONSTRAINT tasks_completed_at_consistent CHECK ((status = 'done') = (completed_at IS NOT NULL));
+```
+
+- Backfill (Q7, validé par délégation) : la valeur par défaut donne `todo` et `completed_at` nul à toutes les lignes existantes, sans `UPDATE` : aucune donnée modifiée ni perdue. Les deux `CHECK` sont vrais pour ces lignes.
+- « Renseignée si et seulement si `done` » : `status` étant `NOT NULL`, les deux membres sont des booléens non nuls, donc pas le piège de logique à trois valeurs rencontré en 0001.
+- Rejouabilité et absence d'état partiel : assurées par `bin/migrate` (table de suivi, transaction). Pas de `IF NOT EXISTS` : ce serait masquer une divergence. Aucun `BEGIN`/`COMMIT`, rien de `CONCURRENTLY`.
+- `completed_at` en `timestamptz` (instant absolu, rendu en UTC `...Z` par le dépôt comme `created_at`). Valeur positionnée par `now()` dans l'`UPDATE`, comme `updated_at`; pas de trigger. Pas d'index sur `status` (volume d'un outil personnel; à ajouter par migration si besoin).
+- Compatibilité PostgreSQL : `ADD COLUMN` avec défaut constant ne réécrit pas la table; `ADD CONSTRAINT ... CHECK` la parcourt sous verrou `ACCESS EXCLUSIVE` sans réécriture (documentation PostgreSQL 17 `ALTER TABLE`, consultée le 2026-10-11; la page ne date pas l'apparition du défaut sans réécriture, PostgreSQL 11 selon la connaissance de l'Architecte, non vérifié par source). Sans effet à cette échelle. AlwaysData propose PostgreSQL 16 à 18 (vérifié le 2026-10-10, tableau ci-dessus). Aucune extension, aucun droit particulier (pas de fonction ni de trigger) : le seul point non vérifié reste celui de 0001 (droits `CREATE FUNCTION`/trigger, pgBouncer). Aucune migration sur AlwaysData sans autorisation.
+- Noms de contraintes verrouillés par test d'intégration (`23514`). Un `23514` sur ces deux noms qui atteindrait le dépôt est un bogue du service : erreur interne (500), journalisée, non traduite (règle existante des `tasks_*`).
+- Tests de schéma (`TaskSchemaTest`) : défaut `todo`; valeur d'état inconnue refusée; `done` sans clôture refusé; `todo`/`in_progress` avec clôture refusé; `done` avec clôture accepté; **backfill** : appliquer 0001 seule via un `Migrator` pointant un répertoire temporaire contenant uniquement 0001, insérer des tâches, puis migrer le répertoire complet et vérifier `todo` / `NULL`.
+
+### Modèle et contrat de données partagé
+
+`Task` gagne deux champs : `status` (`"todo"|"in_progress"|"done"`) et `completed_at` (ISO 8601 UTC ou `null`). Ajout compatible : aucun champ existant ne change. `required_actions` reste `[{id,title}]` (ajouter `status` aux éléments est possible plus tard, non retenu : non demandé). `create` et `update` n'acceptent toujours pas `status`/`completed_at` comme champ ordinaire (`field_unknown` à la création; voir `update` ci-dessous). Les requêtes du dépôt nomment déjà leurs colonnes : `TASK_COLUMNS` ajoute `status` et `completed_at`, rien d'autre ne change dans `insert`/`update`.
+
+### Couche commune (proposé)
+
+- `TaskStatus` : énumération PHP 8.3 adossée (`Todo`, `InProgress`, `Done`; PHP natif, sans dépendance) portant **l'unique table des transitions** : `todo -> {in_progress}`, `in_progress -> {done, todo}`, `done -> {todo}`. Même état ou autre couple : refusé.
+- `NextDueDate` (classe pure, `Application`) : `compute(string $dueDate, int $interval, string $unit): string`, testée en `tests/Unit` sans base. Règle : jour = + N jours; semaine = + 7 N jours; mois = + N mois; année = + 12 N mois; pour mois et année, le jour est conservé et **ramené au dernier jour du mois d'arrivée s'il n'existe pas** (31 janvier + 1 mois = 28/29 février; 29 février + 1 an = 28 février; 29 février 2028 + 4 ans = 29 février 2032). Calcul sur (année, mois, jour) entiers, **jamais** `DateTime::modify('+1 month')` (déborde sur mars). Pas de colonne d'ancrage : l'échéance suivante part de la date stockée, donc dérive acceptée (31 janv. → 28 févr. → 28 mars; Q2). Date butée suivante = ancienne + intervalle même si le résultat est passé (Q2). **Dépassement** : résultat après `9999-12-31` (borne du validateur) -> `NextDueDateOutOfRange`; pour ne pas dépendre de la taille des entiers, tester d'abord un intervalle manifestement hors plage (jours/semaines > ~4 millions) avant toute addition; les mois se calculent en entiers 64 bits (intervalle max 2 147 483 647 x 12 tient). Test d'oracle possible dans la suite d'intégration : comparer à `date + make_interval(...)` de PostgreSQL, qui ramène aussi au dernier jour du mois (comportement connu de l'Architecte, **non vérifié** ici).
+- `TaskService::changeStatus(int $id, mixed $status): array` renvoie `{task: Task, next_occurrence: Task|null}`. Un cas d'usage unique pour toutes les transitions (la terminaison n'est que la transition vers `done`). Une transaction (`READ COMMITTED`, existante), ordre fixe :
+  1. `find($id, forUpdate: true)` : verrou de ligne; inconnu : `TaskNotFound`. Une seconde demande concurrente attend le verrou, relit l'état `done` et reçoit l'erreur de transition (Q6; en `READ COMMITTED`, la ligne est relue après attente);
+  2. valeur : non-chaîne ou `null` -> `InvalidTask` `field_type_invalid`; chaîne hors des trois codes -> `InvalidTask` `status_invalid` (sensible à la casse);
+  3. transition permise par `TaskStatus`, sinon `InvalidStatusTransition`;
+  4. si cible `done` : actions requises non `done` (lues avec `FOR SHARE` sur les lignes requises, pour qu'aucune ne soit rouverte entre le contrôle et le commit) -> `RequiredActionsNotDone` avec la liste complète; démarrer (`in_progress`) avec prérequis non terminés reste permis (Q11);
+  5. si cible `done` et tâche périodique : calcul de l'échéance (`NextDueDateOutOfRange` si dépassement); tout refus laisse la tâche, `updated_at` et la table inchangés (aucune écriture avant ce point);
+  6. écriture : `UPDATE tasks SET status, completed_at = (now() si done, sinon NULL), updated_at = now()`; si périodique et cible `done` : `INSERT` de l'occurrence (mêmes `title`, `category`, `estimated_minutes`, `description`, `recurrence`; `due_date` calculée; `status` `todo`), **aucun lien** (Q3).
+  Pas de validation métier hors de ce cas d'usage. L'occurrence est créée avec les valeurs d'une ligne déjà valide : elle ne repasse pas par `TaskValidator`.
+- `TaskService::patch(int $id, array $changes): array` (nouveau, sortie toujours `{task, next_occurrence}`) porte l'aiguillage de `PATCH` : clé `status` présente **avec** une autre clé -> `InvalidTask` `status_not_alone` (`details.field` = `status`); `status` seul -> `changeStatus`; sans `status` -> `update` (puis `next_occurrence` = `null`). Raison : la règle « `status` seul » (Q8) vit à un seul endroit, partagée par REST et un futur MCP. `update` reste identique à la tranche A (`status` y reste `field_unknown`). Alternative écartée : porter la règle dans `TaskController` (à dupliquer à l'arrivée de MCP). Conséquence : le contrôleur appelle `patch` pour tout `PATCH`, et n'ajoute `next_occurrence` à la réponse que si la clé `status` figure dans le corps (décision de présentation REST, voir contrat).
+- `TaskService::list(array $filters = [])` : clés permises `status`, `category`; clé inconnue -> `InvalidTask` `field_unknown`. Valeur : non-chaîne -> `field_type_invalid`; chaîne vide ou hors liste -> `status_invalid` / `category_invalid` (mêmes codes que dans les corps, `details.field` = `status` ou `category`; catégorie sensible à la casse); filtres combinés en ET; **une seule valeur** par filtre. Sans filtre : toutes les tâches, tri inchangé. SQL : clauses `WHERE` fixes avec paramètres liés, jamais de nom de colonne issu de l'entrée.
+- Inchangés : `create` (créée `todo`, sans clôture par le défaut), `get`, `delete` (mêmes règles pour une tâche `done`), `addRequiredAction`/`removeRequiredAction` (Q11 : ajouter une action requise non terminée à une `done` est permis), `TaskValidator` pour les champs existants. `update` d'une `done` : autres champs modifiables (Q8).
+- Retour à `todo` : `completed_at` effacé; l'occurrence déjà créée n'est pas touchée, aucune filiation, doublon possible si on re-termine (Q4, accepté).
+- `Request` : gagne un paramètre `query` (tableau, défaut `[]`, dernier argument : appels existants valides), rempli par `fromGlobals()` avec `parse_str(parse_url($uri, PHP_URL_QUERY))`. C'est la **seule** modification d'une classe HTTP.
+
+### Erreurs de domaine ajoutées (proposé; noms corrigés par rapport au backlog)
+
+Convention constatée : `<champ>_invalid` pour une valeur (`category_invalid`, `due_date_invalid`), `<sujet>_<état>` pour un refus d'état (`task_not_found`, `task_is_required`, `dependency_cycle`); le vocabulaire du modèle est « actions requises », pas « prérequis ». D'où :
+
+| Classe | `code` | `details` | REST | Remplace |
+|---|---|---|---|---|
+| `InvalidTask` (famille existante) | `status_invalid`, `status_not_alone` ; `field_type_invalid` | `{field}` | 422 (par classe) | — |
+| `InvalidStatusTransition` | `status_transition_invalid` | `{id, from, to}` | 409 | `invalid_status_transition` : corrigé (suffixe `_invalid` aligné sur `status_invalid`; la famille `status_*` se range ensemble) |
+| `RequiredActionsNotDone` | `required_actions_not_done` | `{id, required_actions:[{id,title,status}]}` triées par `id` | 409 | `prerequisites_not_done` : corrigé (« prerequisites » n'existe nulle part dans le modèle ni les contrats; `required_actions` est le nom du champ) |
+| `NextDueDateOutOfRange` | `next_due_date_out_of_range` | `{id, due_date}` (échéance actuelle) | 409 | nom proposé par le backlog sans code : à valider |
+
+409 : l'entrée est correcte mais en conflit avec l'état courant (principe existant); `RestAdapter::DOMAIN_STATUS` reçoit trois lignes, rien d'autre. Messages en français, sans valeur utilisateur répétée. Aucune classe `InvalidTask` supplémentaire n'est nécessaire (le statut 422 se décide par classe).
+
+Traduction SQL (`TaskRepository`) : aucune nouvelle traduction; `23514` sur `tasks_status_valid`/`tasks_completed_at_consistent` = bogue = 500.
+
+### Contrat REST (proposé; versionnement `/api/v1` conservé, ajouts compatibles)
+
+**`PATCH /api/v1/tasks/{id}`** avec la clé `status` (appelle `TaskService::patch`)
+- Corps : `{"status":"todo"|"in_progress"|"done"}` seul. Avec un autre champ : 422 `status_not_alone`. `status` `null`, non chaîne : 422 `field_type_invalid`; chaîne inconnue ou vide : 422 `status_invalid`. Sans clé `status`, le comportement de la tranche CRUD est inchangé.
+- 200 : la `Task` **à plat** plus la clé `next_occurrence` : `{...Task, "next_occurrence": Task|null}`. Présente dans toute réponse à un `PATCH` contenant `status` (`null` sauf terminaison d'une périodique); absente des autres réponses (`GET`, `POST`, `PATCH` sans `status`). **À valider** : variante « toujours présente » écartée pour ne pas changer la forme des réponses existantes.
+- Ordre des contrôles : 400 `invalid_json` -> 404 `task_not_found` -> 422 (`status_not_alone`, `field_type_invalid`, `status_invalid`) -> 409 `status_transition_invalid` -> 409 `required_actions_not_done` -> 409 `next_due_date_out_of_range`. Chaque refus : tâche et `updated_at` inchangés.
+
+**`GET /api/v1/tasks?status=<code>&category=<Pro|Perso>`** : filtres facultatifs, une valeur chacun, combinés en ET. Valeur invalide : 422 `status_invalid` / `category_invalid` avec `details.field`; valeur répétée sous forme de tableau (`status[]=`) : 422 `field_type_invalid`; `status=` vide : 422. Paramètres inconnus ignorés (l'adaptateur ne transmet que `status` et `category`; la tranche CRUD « chaîne de requête ignorée » reste vraie sans filtre). Sans filtre : toutes les tâches, 200, `[]` si aucune.
+
+Les `Task` de toutes les réponses (`GET`, `POST` 201, `PATCH`, liens `PUT`/`DELETE`) exposent `status` et `completed_at`. `POST` ne les accepte pas : 422 `field_unknown`.
+
+Tableau des erreurs de la tranche : 404 `task_not_found`; 422 `status_invalid`, `status_not_alone`, `field_type_invalid`, `category_invalid`; 409 `status_transition_invalid`, `required_actions_not_done`, `next_due_date_out_of_range`; 400 `invalid_json`; 405/500/503 inchangés (`Allow` inchangé).
+
+### Impact sur la suppression et les dépendances
+
+- `DELETE` : règle inchangée. Une tâche `done` requise par une autre : 409 `task_is_required` (Q3 : après terminaison d'une périodique, les liens restent sur l'ancienne occurrence, qui reste requise); sinon supprimée avec ses propres liens. Rien dans le schéma ne relie une occurrence à sa source : supprimer l'une n'affecte pas l'autre.
+- Dépendances : le trigger anti-cycle est inchangé; `done` ne joue aucun rôle dans le cycle. Le contrôle des prérequis ne vit que dans `changeStatus`. Tolérés (Q4, Q11) : une `done` qui a une action requise non terminée (ajoutée après coup ou rouverte en amont).
+- Concurrence : verrous pris dans l'ordre « tâche, puis ses actions requises »; ce graphe est acyclique, donc pas d'interblocage entre deux terminaisons; une réouverture ne verrouille que sa ligne. Un lien ajouté pendant une terminaison attend le verrou de la tâche (clé étrangère). Non testé en déterministe, seule la terminaison double (deuxième demande -> `status_transition_invalid`) l'est par l'état final; à lire comme tel.
+
+### Analyse d'impact
+
+- Schéma : une migration additive, aucune perte; consommateurs : `TaskSchemaTest` et suites qui remigrent (deviennent 0001 + 0002), tests comparant la forme exacte d'une `Task` (à mettre à jour pour `status`, `completed_at`; une recherche rapide des clés dans `tests/` n'a pas trouvé de comparaison de la forme complète, non exhaustive : à vérifier par le Developer en rejouant la suite).
+- REST : ajouts seulement (clé `status`, `next_occurrence`, deux champs de `Task`, deux paramètres de requête). Aucune rupture; aucun client réel. 
+- Dépendances et hébergement : aucune dépendance Composer; PHP natif (enum depuis 8.1, contrainte `>=8.3` respectée); `mbstring` inchangé.
+- Sécurité : validation côté serveur dans le cas d'usage, requêtes préparées, valeurs jamais répétées dans les erreurs, filtres liés. Authentification : aucune (local).
+- Impact futur MCP : un outil de changement d'état appelle `TaskService::patch` (ou `changeStatus`), renvoie les mêmes JSON d'erreur en `isError` et la même forme `{task, next_occurrence}`; schéma d'entrée : `status` énuméré aux trois codes. Portail : table code -> libellé français, affichage de `completed_at`; aucune règle de transition à réécrire (la table de `TaskStatus` peut être exposée à l'interface si besoin). Authentification : sans effet.
+
+### Tests à écrire avant le code (proposé)
+
+- Unit : `NextDueDate` (31 janv. + 1 mois = 28 févr. 2026 et 29 févr. 2028; 2028-02-29 + 1 an = 2029-02-28; + 4 ans = 2032-02-29; 2026-12-31 + 1 mois = 2027-01-31; semaine = + 7 jours; jours; intervalle immense; `9999-12-31` + 1 jour/mois/année et `9999-12-30` + 1 jour = `9999-12-31` accepté); `TaskStatus` (les 9 couples).
+- Intégration service : chaque transition permise (4) et refusée (au moins `todo`->`done`, `done`->`in_progress`, même état), avec `updated_at` et ligne inchangés (forcer d'abord `updated_at` dans le passé); terminaison avec prérequis non `done` : liste exacte, aucune occurrence, ligne inchangée; sans prérequis ou tous `done` : réussit; périodique : `done` conservée, occurrence aux bons champs, sans lien, `todo`, bonne échéance, `next_occurrence`; non périodique : `next_occurrence` `null`, une seule ligne; dépassement : refusé, aucune écriture; `completed_at` posé à la terminaison, effacé au retour à `todo`; seconde terminaison -> `status_transition_invalid`, une seule occurrence; `patch` : `status` + autre champ, `status` `null`/inconnu; `list` : filtres seuls et combinés, valeurs invalides, tri; démarrer avec prérequis non terminés; ajouter une action requise non terminée à une `done`; `delete` d'une `done` requise (409) et non requise.
+- REST : `PATCH` (200 + `next_occurrence`, 409 x3, 422 x3, 404, 400 prioritaire sur 404), `GET /tasks` filtré (422 et `details.field`, paramètre inconnu ignoré), `Task` avec `status`/`completed_at` partout.
+- Non vérifiable par ces tests : appel HTTP réel; concurrence réelle sur deux connexions (un test déterministe à deux connexions est possible, comme pour les liens : connexion 1 tient `FOR UPDATE`, connexion 2 avec `lock_timeout` échoue en `55P03`).
+
+### À faire valider avant implémentation
+
+1. Noms corrigés : `status_transition_invalid`, `required_actions_not_done`; nouveau `next_due_date_out_of_range`; `status_not_alone`; statut 409 pour les trois refus d'état.
+2. Colonnes `status` (codes anglais) et `completed_at timestamptz`, deux `CHECK` nommés (schéma, donc étape structurante).
+3. `Task` expose `status` et `completed_at` (contrat partagé, ajout compatible).
+4. `next_occurrence` seulement dans les réponses de `PATCH` avec `status`.
+5. `TaskService::patch` (nouveau cas d'usage d'aiguillage) plutôt que modifier `update`.
+6. `Request::$query`.
+7. Les décisions Q1 à Q12 restent « validées par délégation » : l'utilisateur peut les confirmer ou les rouvrir; la migration étant additive, une réouverture de Q1 à Q6 coûte une règle de service, pas une migration, sauf Q5 (contrainte de clôture).
 
 ## Dépendances Composer (proposé)
 
