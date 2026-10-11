@@ -26,10 +26,12 @@ final class TaskController
         return Response::json(201, $task, ['Location' => '/api/v1/tasks/' . $task['id']]);
     }
 
-    /** La chaîne de requête éventuelle est ignorée (aucun filtre ni option dans cette version). */
-    public function list(): Response
+    /** Seuls les filtres `status` et `category` sont transmis; les autres paramètres sont ignorés. */
+    public function list(Request $request): Response
     {
-        return Response::json(200, $this->tasks->list());
+        $filters = array_intersect_key($request->query, ['status' => true, 'category' => true]);
+
+        return Response::json(200, $this->tasks->list($filters));
     }
 
     /** Le corps est contrôlé (400) avant l'appel au cas d'usage, qui contrôle l'existence (404) puis la validation (422). */
@@ -40,7 +42,13 @@ final class TaskController
             return self::invalidJson();
         }
 
-        return Response::json(200, $this->tasks->update($id, $changes));
+        $result = $this->tasks->patch($id, $changes);
+        $body = $result['task'];
+        if (array_key_exists('status', $changes)) {
+            $body['next_occurrence'] = $result['next_occurrence']; // présent seulement si le corps portait `status`
+        }
+
+        return Response::json(200, $body);
     }
 
     public function get(int $id): Response

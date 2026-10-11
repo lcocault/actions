@@ -6,12 +6,16 @@ namespace Actions\Http;
 
 final class Request
 {
-    /** @param array<string,string> $headers noms en minuscules */
+    /**
+     * @param array<string,string> $headers noms en minuscules
+     * @param array<string,mixed> $query paramètres de la chaîne de requête (valeurs chaîne ou tableau)
+     */
     public function __construct(
         public readonly string $method,
         public readonly string $path,
         public readonly array $headers = [],
         public readonly string $body = '',
+        public readonly array $query = [],
     ) {
     }
 
@@ -36,12 +40,18 @@ final class Request
         $uri = is_string($_SERVER['REQUEST_URI'] ?? null) ? $_SERVER['REQUEST_URI'] : '/';
         $path = parse_url($uri, PHP_URL_PATH);
         $body = file_get_contents('php://input');
+        $queryString = parse_url($uri, PHP_URL_QUERY);
+        $query = [];
+        if (is_string($queryString)) {
+            parse_str($queryString, $query);
+        }
 
         return new self(
             strtoupper(is_string($_SERVER['REQUEST_METHOD'] ?? null) ? $_SERVER['REQUEST_METHOD'] : 'GET'),
             is_string($path) && $path !== '' ? $path : '/',
             $headers,
             $body === false ? '' : $body,
+            $query,
         );
     }
 }

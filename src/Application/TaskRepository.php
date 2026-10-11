@@ -11,8 +11,9 @@ namespace Actions\Application;
 final class TaskRepository
 {
     private const TASK_COLUMNS = "id, title, category, to_char(due_date, 'YYYY-MM-DD') AS due_date,"
-        . ' recurrence_interval, recurrence_unit, estimated_minutes, description,'
+        . ' recurrence_interval, recurrence_unit, estimated_minutes, description, status,'
         . " to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at,"
+        . " to_char(completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS completed_at,"
         . " to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS updated_at";
 
     private ?\PDO $pdo = null;
@@ -123,15 +124,61 @@ final class TaskRepository
         return $this->toTask($row, $required[$id] ?? []);
     }
 
-    /** @return list<array<string,mixed>> triées due_date croissante (sans date en dernier), puis id */
-    public function findAll(): array
+    /**
+     * Triées due_date croissante (sans date en dernier), puis id. Clauses fixes, valeurs liées.
+     *
+     * @param array{status?:TaskStatus,category?:string} $filters déjà validés
+     * @return list<array<string,mixed>>
+     */
+    public function findAll(array $filters = []): array
     {
+        $where = [];
+        $params = [];
+        if (isset($filters['status'])) {
+            $where[] = 'status = :status';
+            $params['status'] = $filters['status']->value;
+        }
+        if (isset($filters['category'])) {
+            $where[] = 'category = :category';
+            $params['category'] = $filters['category'];
+        }
         $rows = $this->run(
-            'SELECT ' . self::TASK_COLUMNS . ' FROM tasks ORDER BY due_date ASC NULLS LAST, id ASC',
+            'SELECT ' . self::TASK_COLUMNS . ' FROM tasks' . ($where === [] ? '' : ' WHERE ' . implode(' AND ', $where))
+            . ' ORDER BY due_date ASC NULLS LAST, id ASC',
+            $params,
         )->fetchAll();
         $required = $this->requiredActions(null);
 
         return array_map(fn (array $r): array => $this->toTask($r, $required[(int) $r['id']] ?? []), $rows);
+    }
+
+    /** Positionne l'état, la clôture (now() si done, sinon NULL) et updated_at. */
+    public function setStatus(int $id, TaskStatus $status): void
+    {
+        $completed = $status === TaskStatus::Done ? 'now()' : 'NULL'; // constantes, jamais de l'entrée
+        $this->run(
+            'UPDATE tasks SET status = :status, completed_at = ' . $completed . ', updated_at = now() WHERE id = :id',
+            ['status' => $status->value, 'id' => $id],
+        );
+    }
+
+    /**
+     * Actions requises de la tâche avec leur état, triées par id; verrouille ces lignes (FOR SHARE) pour qu'aucune
+     * ne soit rouverte avant la fin de la transaction.
+     *
+     * @return list<array{id:int,title:string,status:string}>
+     */
+    public function lockRequiredActionsWithStatus(int $id): array
+    {
+        $rows = $this->run(
+            'SELECT t.id, t.title, t.status FROM task_dependencies d JOIN tasks t ON t.id = d.required_task_id'
+            . ' WHERE d.task_id = :id ORDER BY t.id FOR SHARE OF t',
+            ['id' => $id],
+        )->fetchAll();
+
+        return array_map(static fn (array $r): array => [
+            'id' => (int) $r['id'], 'title' => (string) $r['title'], 'status' => (string) $r['status'],
+        ], $rows);
     }
 
     /**
@@ -243,6 +290,8 @@ final class TaskRepository
             'estimated_minutes' => $r['estimated_minutes'] === null ? null : (int) $r['estimated_minutes'],
             'description' => $r['description'] === null ? null : (string) $r['description'],
             'required_actions' => $required,
+            'status' => (string) $r['status'],
+            'completed_at' => $r['completed_at'] === null ? null : (string) $r['completed_at'],
             'created_at' => (string) $r['created_at'],
             'updated_at' => (string) $r['updated_at'],
         ];

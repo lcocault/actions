@@ -2,7 +2,15 @@
 
 Gestionnaire de tâches (API REST, MCP, portail web). Voir [CLAUDE.md](CLAUDE.md), [BACKLOG.md](BACKLOG.md), [docs/architecture.md](docs/architecture.md).
 
-État (local uniquement) : squelette, schéma et couche commune des tâches; en REST, lecture et suppression d'une tâche et gestion des actions requises (`GET`/`DELETE /api/v1/tasks/{id}`, `PUT`/`DELETE .../required-actions/{id}`). Création, liste et modification (`POST`/`GET /api/v1/tasks`, `PATCH /api/v1/tasks/{id}`) : contrat écrit, pas encore implémenté. MCP et portail ne servent pas encore les tâches; états des tâches à venir. Aucune authentification : ne lier qu'à `127.0.0.1`.
+## État (local uniquement)
+
+**Existant**
+- Schéma PostgreSQL : migrations `0001` (tâches, dépendances, refus des cycles par trigger) et `0002` (état et date de clôture).
+- Couche commune `src/Application` : créer, lire, lister (filtres état et catégorie), modifier, supprimer une tâche; gérer ses actions requises; changer son état (À faire, En cours, Terminée). Terminer une tâche périodique crée l'occurrence suivante.
+- API REST `/api/v1` : `GET`/`POST /tasks`, `GET`/`PATCH`/`DELETE /tasks/{id}` (`PATCH` avec `status` pour changer l'état), `PUT`/`DELETE /tasks/{id}/required-actions/{id}`, `GET /health`. Contrat et codes d'erreur : [docs/architecture.md](docs/architecture.md).
+- MCP (`POST /mcp`) et portail (`GET /`) : squelette seulement (`ping`, page d'accueil); ils ne servent pas encore les tâches.
+
+**Non fait** : outils MCP et portail sur les tâches, authentification (ne lier qu'à `127.0.0.1`), déploiement AlwaysData (aucune migration lancée hors local).
 
 ## Démarrage local
 
@@ -14,7 +22,7 @@ Prérequis : PHP >= 8.3 avec `pdo_pgsql`, Composer, Docker ou Podman.
 2. `docker compose up -d` (PostgreSQL 17, lié à `127.0.0.1`).
 3. Base de test : `docker compose exec postgres createdb -U actions actions_test`.
 4. `composer install`.
-5. `php bin/migrate` (crée seulement la table `schema_migrations`; rejouable). `php bin/migrate status` liste appliquées/en attente.
+5. `php bin/migrate` (applique les migrations en attente; rejouable). `php bin/migrate status` liste appliquées/en attente.
 6. `php -S 127.0.0.1:8080 -t public public/index.php`.
 7. Vérifier : `curl http://127.0.0.1:8080/api/v1/health` (200 `{"status":"ok","database":"ok"}`), page d'accueil sur `/`, MCP : `POST /mcp` (JSON-RPC).
 

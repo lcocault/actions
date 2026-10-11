@@ -20,7 +20,7 @@ final class TaskSchemaTest extends DbTestCase
         parent::setUp();
         $this->pdo->exec('DROP TABLE IF EXISTS task_dependencies, tasks, schema_migrations CASCADE');
         $this->pdo->exec('DROP FUNCTION IF EXISTS task_dependencies_check_cycle()');
-        self::assertSame(['0001_tasks_and_dependencies'], (new Migrator($this->pdo, self::MIGRATIONS))->migrate());
+        self::assertSame(['0001_tasks_and_dependencies', '0002_task_status'], (new Migrator($this->pdo, self::MIGRATIONS))->migrate());
     }
 
     protected function tearDown(): void
@@ -314,7 +314,85 @@ final class TaskSchemaTest extends DbTestCase
     {
         $id = $this->task('garde');
         self::assertSame([], (new Migrator($this->pdo, self::MIGRATIONS))->migrate());
-        self::assertSame(['applied' => ['0001_tasks_and_dependencies'], 'pending' => []], (new Migrator($this->pdo, self::MIGRATIONS))->status());
+        self::assertSame(['applied' => ['0001_tasks_and_dependencies', '0002_task_status'], 'pending' => []], (new Migrator($this->pdo, self::MIGRATIONS))->status());
         self::assertSame('garde', $this->pdo->query("SELECT title FROM tasks WHERE id = $id")->fetchColumn());
+    }
+
+    // --- migration 0002 : état et clôture ---
+
+    private function row(int $id): array
+    {
+        return $this->pdo->query("SELECT status, completed_at FROM tasks WHERE id = $id")->fetch();
+    }
+
+    public function testNewTaskDefaultsToTodoWithoutCompletion(): void
+    {
+        $row = $this->row($this->task());
+        self::assertSame('todo', $row['status']);
+        self::assertNull($row['completed_at']);
+    }
+
+    public function testUnknownStatusIsRejected(): void
+    {
+        $id = $this->task();
+        foreach (['Done', 'terminee', '', 'doing'] as $status) {
+            $this->assertViolation('23514', 'tasks_status_valid', fn () => $this->pdo->exec("UPDATE tasks SET status = '$status' WHERE id = $id"));
+        }
+        $this->assertViolation('23502', 'status', fn () => $this->pdo->exec("UPDATE tasks SET status = NULL WHERE id = $id"));
+    }
+
+    public function testDoneWithoutCompletionIsRejected(): void
+    {
+        $id = $this->task();
+        $this->assertViolation('23514', 'tasks_completed_at_consistent', fn () => $this->pdo->exec("UPDATE tasks SET status = 'done' WHERE id = $id"));
+    }
+
+    public function testNotDoneWithCompletionIsRejected(): void
+    {
+        $id = $this->task();
+        foreach (['todo', 'in_progress'] as $status) {
+            $this->assertViolation('23514', 'tasks_completed_at_consistent', fn () => $this->pdo->exec("UPDATE tasks SET status = '$status', completed_at = now() WHERE id = $id"));
+        }
+    }
+
+    public function testDoneWithCompletionIsAccepted(): void
+    {
+        $id = $this->task();
+        $this->pdo->exec("UPDATE tasks SET status = 'done', completed_at = now() WHERE id = $id");
+        $row = $this->row($id);
+        self::assertSame('done', $row['status']);
+        self::assertNotNull($row['completed_at']);
+        $this->pdo->exec("UPDATE tasks SET status = 'todo', completed_at = NULL WHERE id = $id");
+        self::assertSame('todo', $this->row($id)['status']);
+    }
+
+    public function testMigration0002BackfillsExistingTasksAsTodoWithoutLosingData(): void
+    {
+        // Base remise à l'état « 0001 seule », avec des tâches et un lien, puis migration complète.
+        $this->pdo->exec('DROP TABLE IF EXISTS task_dependencies, tasks, schema_migrations CASCADE');
+        $this->pdo->exec('DROP FUNCTION IF EXISTS task_dependencies_check_cycle()');
+        $dir = sys_get_temp_dir() . '/actions-mig0001-' . bin2hex(random_bytes(4));
+        mkdir($dir);
+        try {
+            copy(self::MIGRATIONS . '/0001_tasks_and_dependencies.sql', $dir . '/0001_tasks_and_dependencies.sql');
+            self::assertSame(['0001_tasks_and_dependencies'], (new Migrator($this->pdo, $dir))->migrate());
+            $this->pdo->exec("INSERT INTO tasks (title, category, due_date, recurrence_interval, recurrence_unit, description)
+                VALUES ('A', 'Pro', '2026-01-31', 1, 'month', 'ctx'), ('B', 'Perso', NULL, NULL, NULL, NULL)");
+            $this->pdo->exec('INSERT INTO task_dependencies (task_id, required_task_id) VALUES (1, 2)');
+            $before = $this->pdo->query('SELECT id, title, category, due_date, recurrence_interval, recurrence_unit, description, created_at, updated_at FROM tasks ORDER BY id')->fetchAll();
+
+            self::assertSame(['0002_task_status'], (new Migrator($this->pdo, self::MIGRATIONS))->migrate());
+
+            $after = $this->pdo->query('SELECT id, title, category, due_date, recurrence_interval, recurrence_unit, description, created_at, updated_at FROM tasks ORDER BY id')->fetchAll();
+            self::assertSame($before, $after, 'colonnes existantes inchangées');
+            foreach ($this->pdo->query('SELECT status, completed_at FROM tasks')->fetchAll() as $row) {
+                self::assertSame('todo', $row['status']);
+                self::assertNull($row['completed_at']);
+            }
+            self::assertSame(['1>2'], $this->links());
+        } finally {
+            array_map('unlink', glob($dir . '/*') ?: []);
+            rmdir($dir);
+        }
     }
 }

@@ -21,6 +21,9 @@ final class RestAdapter
         'dependency_self' => 422,
         'dependency_cycle' => 409,
         'task_is_required' => 409,
+        'status_transition_invalid' => 409,
+        'required_actions_not_done' => 409,
+        'next_due_date_out_of_range' => 409,
     ];
 
     public function __construct(
@@ -74,7 +77,7 @@ final class RestAdapter
 
         if ($path === '/api/v1/tasks') {
             return match ($method) {
-                'GET' => $this->tasks->list(),
+                'GET' => $this->tasks->list($request),
                 'POST' => $this->tasks->create($request),
                 default => self::methodNotAllowed('GET, POST'),
             };

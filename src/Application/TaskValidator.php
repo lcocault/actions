@@ -57,6 +57,46 @@ final class TaskValidator
         return $this->check($state, $changes);
     }
 
+    /**
+     * Valeur d'état demandée : non-chaîne ou null -> field_type_invalid; chaîne inconnue ou vide -> status_invalid.
+     *
+     * @throws InvalidTask
+     */
+    public function validateStatus(mixed $value): TaskStatus
+    {
+        if (!is_string($value)) {
+            throw new InvalidTask('field_type_invalid', 'status', 'Type de valeur incorrect.');
+        }
+
+        return TaskStatus::tryFrom($value)
+            ?? throw new InvalidTask('status_invalid', 'status', 'L\'état doit être todo, in_progress ou done.');
+    }
+
+    /**
+     * Filtres de liste : clés permises `status` et `category`, une seule valeur chacun.
+     *
+     * @param array<string,mixed> $filters
+     * @return array{status?:TaskStatus,category?:string}
+     * @throws InvalidTask
+     */
+    public function validateFilters(array $filters): array
+    {
+        foreach (array_keys($filters) as $key) {
+            if ($key !== 'status' && $key !== 'category') {
+                throw new InvalidTask('field_unknown', (string) $key, 'Filtre inconnu.');
+            }
+        }
+        $out = [];
+        if (array_key_exists('status', $filters)) {
+            $out['status'] = $this->validateStatus($filters['status']);
+        }
+        if (array_key_exists('category', $filters)) {
+            $out['category'] = $this->category($filters['category']);
+        }
+
+        return $out;
+    }
+
     /** @param array<string,mixed> $data */
     private function rejectUnknownKeys(array $data): void
     {
