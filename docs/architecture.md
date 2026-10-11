@@ -4,7 +4,7 @@ Légende des statuts : **existant** (dans le dépôt, vérifiable), **proposé**
 
 ## État du dépôt
 
-**Existant** (relu le 2026-10-11) : documentation; squelette (`src/`, `bin/migrate`, `compose.yaml`, `.env.example`, `tests/`, `README.md`); migration `database/migrations/0001_tasks_and_dependencies.sql` (tables `tasks`, `task_dependencies`, trigger anti-cycle) et `tests/Integration/TaskSchemaTest.php`, appliqués en local seulement (rien sur AlwaysData). Le seul cas d'usage `Application` est `Diagnostic`; aucun cas d'usage, REST, MCP ni portail pour les tâches. L'Architecte a relu le SQL de 0001, `Diagnostic`, `Database`, `Bootstrap` et la structure de `TaskSchemaTest`; il n'a pas rejoué les tests (vérification du Developer/PO).
+**Existant** (relu le 2026-10-11) : documentation; squelette (`src/`, `bin/migrate`, `compose.yaml`, `.env.example`, `tests/`, `README.md`); migration `database/migrations/0001_tasks_and_dependencies.sql` (tables `tasks`, `task_dependencies`, trigger anti-cycle) et `tests/Integration/TaskSchemaTest.php`, appliqués en local seulement (rien sur AlwaysData). La couche commune des tâches (tranche A) existe : `TaskService`, `TaskValidator`, `TaskRepository`, six erreurs de domaine, `Bootstrap::taskService()`, `TaskValidatorTest`, `TaskServiceTest`; aucun adaptateur (REST, MCP, portail) ne l'appelle encore, `RestAdapter` ne connaît que `GET /api/v1/health`. Relecture de l'Architecte au 2026-10-11 : SQL de 0001, `TaskRepository`, `TaskService`, `RestAdapter`, `Kernel`, `Bootstrap`, `Request`/`Response`, tests `TaskSchemaTest`, `TaskServiceTest` (noms et passages cités) et `RestTest`. Aucun test n'a été rejoué par l'Architecte (pas d'exécution possible dans son rôle) : la vérification reste celle du Developer/PO.
 
 ## Décisions validées (tranche « squelette »)
 
@@ -214,12 +214,12 @@ Compromis :
 - **Trigger seul (retenu)** : garantit l'invariant quel que soit le chemin d'écriture (REST, MCP, portail, `psql`, futures importations), sans duplication. Coût : logique en PL/pgSQL, à tester en base réelle (donc tests d'intégration obligatoires), et un message d'erreur sans le chemin du cycle.
 - **Application seule (écarté)** : lecture du graphe puis `INSERT` en deux temps; non sûr en concurrence (deux transactions voient chacune un graphe sans cycle, `A→B` et `B→A` sont validées ensemble) sauf à reprendre un verrou équivalent, et contournable par tout accès hors Application.
 - **Les deux (écarté pour l'instant)** : doublon de règle. Si un message plus riche est voulu (chemin `A → B → A`), l'Application peut, *après* une erreur du trigger, relire le chemin pour l'afficher : affichage seulement, pas de décision.
-- **Concurrence** : en `READ COMMITTED` (défaut PostgreSQL, à ne pas changer), chaque instruction prend un instantané neuf : après obtention du verrou, la requête de l'étape 2 voit les liens validés par la transaction concurrente, donc la seconde insertion échoue. En `REPEATABLE READ`/`SERIALIZABLE` l'instantané antérieur au verrou pourrait ne pas les voir : ne pas utiliser ces niveaux pour écrire des liens (à écrire dans les conventions du Developer). Un `INSERT` multi-lignes (`A→B, B→A` en une instruction) doit être refusé : les lignes précédentes de la même instruction sont visibles du trigger (fonction volatile), **à confirmer par un test**, non exécuté ici. Risque d'interblocage : une seule clé de verrou, donc pas de cycle de verrous entre liens; un `DELETE` de tâche concurrent est arbitré par PostgreSQL via les clés étrangères.
+- **Concurrence** : en `READ COMMITTED` (défaut PostgreSQL, à ne pas changer), chaque instruction prend un instantané neuf : après obtention du verrou, la requête de l'étape 2 voit les liens validés par la transaction concurrente, donc la seconde insertion échoue. En `REPEATABLE READ`/`SERIALIZABLE` l'instantané antérieur au verrou pourrait ne pas les voir : ne pas utiliser ces niveaux pour écrire des liens (à écrire dans les conventions du Developer). Un `INSERT` multi-lignes (`A→B, B→A` en une instruction) doit être refusé : les lignes précédentes de la même instruction sont visibles du trigger (fonction volatile); **existant** : couvert par `TaskSchemaTest` (deux et trois lignes), résultat rapporté par le Developer, non rejoué par l'Architecte. Risque d'interblocage : une seule clé de verrou, donc pas de cycle de verrous entre liens; un `DELETE` de tâche concurrent est arbitré par PostgreSQL via les clés étrangères.
 - Performance : parcours borné par le nombre de tâches atteignables; sans objet à l'échelle d'un outil personnel. Index `task_dependencies_required_idx` utile aux recherches inverses (« qui requiert X ») et aux contrôles `RESTRICT`; la clé primaire couvre `task_id`.
 
 Mapping d'erreurs SQL : voir « Couche commune des tâches » (section « Traduction des erreurs SQL »), qui remplace la version initiale de ce paragraphe (le doublon de lien est **validé idempotent**, plus de 409).
 
-Compatibilité hébergement : PostgreSQL 16–18 (vérifié le 2026-10-10, voir tableau AlwaysData). Utilisés : `GENERATED ... AS IDENTITY`, CTE récursive, PL/pgSQL (inclus par défaut), advisory locks : tous disponibles depuis PostgreSQL 10 ou moins; aucune extension. **Non vérifié** : droit de créer une fonction/un trigger avec le rôle de base AlwaysData et comportement de pgBouncer; à tester sur une base AlwaysData jetable avant la tranche de déploiement (aucune migration sans autorisation de l'utilisateur).
+Compatibilité hébergement : PostgreSQL 16–18 (vérifié le 2026-10-10, voir tableau AlwaysData). Utilisés : `GENERATED ... AS IDENTITY`, CTE récursive, PL/pgSQL (inclus par défaut), advisory locks : tous disponibles dans PostgreSQL 16-18 (`CREATE TRIGGER ... EXECUTE FUNCTION` exige PostgreSQL 11 ou plus; la formulation initiale « depuis PostgreSQL 10 » était inexacte, sans effet pour 16-18); aucune extension. `hashtext()` est une fonction interne que l'Architecte ne sait pas documentée comme interface stable (non vérifié dans la documentation de PostgreSQL 16-18) : risque faible, une clé entière constante serait l'alternative via une future migration. **Non vérifié** : droit de créer une fonction/un trigger avec le rôle de base AlwaysData et comportement de pgBouncer; à tester sur une base AlwaysData jetable avant la tranche de déploiement (aucune migration sans autorisation de l'utilisateur).
 
 Analyse d'impact (mise à jour 2026-10-11) : 0001 n'est appliquée qu'en local; aucune donnée de production. Consommateurs : `TaskSchemaTest` seul (et la couche commune à venir). REST, MCP et portail n'ont pas encore de contrat sur les tâches. Évolutions compatibles prévues : colonnes ajoutées par migration avec valeur par défaut (statut en tranche B, `due_time`), nouvelle valeur de catégorie par modification du `CHECK`. Condition de compatibilité imposée au Developer de la tranche A : les requêtes nomment toujours leurs colonnes (`INSERT (cols...)`, `SELECT cols...`, jamais `SELECT *` ni `INSERT` sans liste), afin que la colonne d'état de `0002` soit sans effet sur elles.
 
@@ -266,7 +266,7 @@ Règles transverses :
 - `updated_at = now()` est positionné par l'UPDATE du dépôt (pas de trigger). Un `update` dont aucun champ ne change la valeur n'écrit pas et ne change pas `updated_at`. **Proposé, à confirmer** : ajouter ou retirer un lien effectif modifie `updated_at` de la tâche `taskId` (pas un no-op idempotent).
 - `addRequiredAction` : ordre des contrôles fixe : `taskId` connu, `requiredTaskId` connu, puis `INSERT ... ON CONFLICT (task_id, required_task_id) DO NOTHING` (idempotence **validée** : le lien existant renvoie un succès, sans doublon; le trigger ne produit pas de faux cycle sur un lien existant, car un graphe valide est acyclique). L'auto-dépendance (`taskId = requiredTaskId`, tâche connue) est refusée **par le `CHECK`** puis traduite, sans prévérification en PHP (pas de règle dupliquée). `(A, A)` avec `A` inconnue renvoie `TaskNotFound`.
 - `removeRequiredAction` : lien absent = succès (idempotent par symétrie; **proposé, à valider**).
-- `delete` : `DELETE` direct; `23503` -> la transaction est annulée, puis la liste des dépendants est lue (`id`, `title`) et `TaskIsRequired` est levée. Aucune prévérification (la base arbitre aussi la concurrence). Identifiant inconnu (0 ligne) : `TaskNotFound` (**proposé**, non idempotent). Les liens propres de la tâche partent par `ON DELETE CASCADE`.
+- `delete` : `DELETE` direct, **en autocommit** (instruction unique donc atomique; **validé par l'Architecte le 2026-10-11**, écart (c) du Developer accepté : une transaction explicite n'apporterait rien); `23503` -> la liste des dépendants est lue ensuite (`id`, `title`) et `TaskIsRequired` est levée. Tolérance documentée : si un lien est retiré entre le refus et cette lecture, `dependents` peut être incomplet ou vide, le refus restant exact au moment où il a eu lieu. Aucune prévérification (la base arbitre aussi la concurrence). Identifiant inconnu (0 ligne) : `TaskNotFound` (**proposé**, non idempotent). Les liens propres de la tâche partent par `ON DELETE CASCADE`.
 - `list` : sans filtre ni pagination (outil mono-utilisateur); filtres/pagination = ajouts facultatifs compatibles, à demander au Product Owner si utiles.
 
 ### Validation (`TaskValidator`, proposé)
@@ -327,6 +327,90 @@ Mapping futur (aucune règle dupliquée) :
 ### Dépendance et hébergement
 
 Aucune dépendance nouvelle. Fonctions PHP utilisées : `mbstring` (déjà en contrainte, listé activé dans l'exemple PHP 8.2 AlwaysData, **non vérifié** pour la version cible) et PCRE `/u` (noyau PHP). SQL : `ON CONFLICT`, `FOR UPDATE`, déjà couverts par PostgreSQL 16-18 (vérifié le 2026-10-10).
+
+## Tranche « dépendances entre tâches » : REST des actions requises
+
+Statuts : **validé** = décision de l'utilisateur transmise le 2026-10-11 (REST seul et local; ajout/retrait unitaire d'un lien en sous-ressource; cycle refusé en 409 `dependency_cycle` sans chemin; retrait d'un lien absent et ajout d'un lien existant idempotents). Tout le reste de la section est **proposé**, non opposable au Developer.
+
+### Relecture de la tranche A (2026-10-11)
+
+Conforme, sans reprise de migration : schéma et trigger de 0001, ordre des contrôles de `addRequiredAction`, idempotence (`ON CONFLICT DO NOTHING` : le trigger s'exécute avant la détection de conflit mais ne voit pas de faux cycle, le graphe étant acyclique; le `CHECK` d'auto-dépendance passe avant le conflit), noms de contraintes verrouillés par `TaskSchemaTest` (dont les deux clés étrangères), niveau d'isolation imposé par `TaskRepository::transaction()`. Écarts et points à connaître :
+
+1. **Documentation périmée** (état du dépôt, « PostgreSQL 10 », test multi-lignes « à confirmer ») : corrigée ci-dessus.
+2. **`delete` en autocommit** : accepté (voir « Cas d'usage »).
+3. **`PDOException` imprévues relancées** par le dépôt (point (d) du Developer) : conforme à la conception; l'adaptateur REST les convertit (voir « Erreurs »). Aucune ne doit sortir de `RestAdapter`.
+4. **Concurrence au niveau service non testée** : la sérialisation par verrou est testée au niveau SQL (`testConcurrentOppositeLinksAreSerialisedThenRejected`); les traductions `23503` de course (suppression concurrente d'une tâche pendant l'ajout) ne sont pas testables de façon déterministe, acceptées non testées. Aucun interblocage identifié à la lecture (une seule clé de verrou consultatif; `UPDATE tasks` de `touch` ne conflit pas avec les verrous de clé étrangère); `40P01`/`55P03` restent des erreurs internes.
+5. **AlwaysData, non vérifié** (page PostgreSQL relue le 2026-10-11 : elle ne dit rien sur le droit de créer fonction ou trigger, sur le mode de pooling de pgBouncer ni sur les verrous consultatifs). Le verrou est de portée transaction et `SET TRANSACTION` est émis dans la transaction : sûrs en pooling par session ou par transaction. À tester sur base jetable avant déploiement; sans objet pour cette tranche (local).
+6. **Écart de périmètre** : le critère 1 (lire A) et le critère 6 (supprimer B) du backlog exigent `GET /tasks/{id}` et `DELETE /tasks/{id}`, qui relèvent de l'élément P2 « CRUD REST ». Proposé : cette tranche livre ces deux routes (contrat ci-dessous, repris tel quel par P2) et rien d'autre du CRUD; les tâches de test sont créées par `TaskService`, pas par REST. **À valider par l'utilisateur.**
+
+### Routes (proposé)
+
+Préfixe `/api/v1` (versionnement du squelette). Corps de réponse en `application/json`; `{id}` et `{requiredId}` : entiers positifs.
+
+| Méthode et chemin | Cas d'usage | Succès | Erreurs |
+|---|---|---|---|
+| `PUT /api/v1/tasks/{id}/required-actions/{requiredId}` | `addRequiredAction` | 200, `Task` de `{id}` (lien présent; identique que le lien soit nouveau ou existant) | 404 `task_not_found`, 422 `required_task_not_found`, 422 `dependency_self`, 409 `dependency_cycle` |
+| `DELETE /api/v1/tasks/{id}/required-actions/{requiredId}` | `removeRequiredAction` | 200, `Task` de `{id}` (lien absent ensuite, qu'il ait existé ou non) | 404 `task_not_found` |
+| `GET /api/v1/tasks/{id}` | `get` | 200, `Task` | 404 `task_not_found` |
+| `DELETE /api/v1/tasks/{id}` | `delete` | 204, sans corps | 404 `task_not_found`, 409 `task_is_required` |
+
+Choix de forme : `PUT` sur l'URL du lien car il est naturellement idempotent et ne demande ni corps ni validation de JSON (donc aucune règle de forme à dupliquer côté MCP). Alternative écartée : `POST /tasks/{id}/required-actions` avec `{"required_task_id":N}`, qui oblige à valider un corps et, pour distinguer 201/200, à changer la sortie de `TaskService`. Pas de `GET .../required-actions` : la `Task` contient déjà `required_actions` (`[{id,title}]` triées par `id`). Corps et `Content-Type` des requêtes `PUT`/`DELETE` sont ignorés.
+
+Sortie `Task` : l'objet défini en « Cas d'usage » (`id`, `title`, `category`, `due_date`, `recurrence`, `estimated_minutes`, `description`, `required_actions`, `created_at`, `updated_at`), directement comme corps, sans enveloppe.
+
+Ordre des contrôles de `PUT` (celui du service, à ne pas modifier) : identifiants du chemin, `task_not_found`, `required_task_not_found`, `dependency_self`, `dependency_cycle`. Donc `PUT /tasks/7/required-actions/7` : 404 si 7 n'existe pas, sinon 422 `dependency_self`. `DELETE` d'un lien dont `{requiredId}` n'existe pas : 200 (conséquence du retrait idempotent; le service ne contrôle pas `{requiredId}`).
+
+Identifiants du chemin : motif `[1-9][0-9]*` et valeur tenant dans un entier PHP 64 bits (contrôle par `filter_var(FILTER_VALIDATE_INT)`, jamais un simple `(int)` qui sature); sinon 404 `not_found` (ressource inexistante, pas une erreur de domaine). Un chemin connu avec une méthode non prévue : 405 `method_not_allowed` avec `Allow` (`PUT, DELETE` pour le lien; `GET, DELETE` pour la tâche). Un `{requiredId}` valide mais inexistant dans `PUT` reste 422 (cohérent avec la table des erreurs de domaine, valable aussi pour MCP) plutôt que 404.
+
+### Erreurs (proposé)
+
+Format commun existant `{"error":{"code","message","details"?}}`; `message` en français court (celui de l'exception); `details` = `details()` de l'exception, absent s'il est vide.
+
+| `code` | HTTP | Origine | `details` |
+|---|---|---|---|
+| `task_not_found` | 404 | `TaskNotFound` | `{id}` |
+| `required_task_not_found` | 422 | `RequiredTaskNotFound` | `{required_task_id}` |
+| `dependency_self` | 422 | `InvalidDependency` | `{task_id}` |
+| `dependency_cycle` | 409 | `CyclicDependency` (**validé** : sans chemin du cycle) | `{task_id, required_task_id}` |
+| `task_is_required` | 409 | `TaskIsRequired` | `{id, dependents:[{id,title}]}` |
+| `not_found`, `method_not_allowed` | 404, 405 | routage (existant) | — |
+| `service_unavailable` | 503 | `DatabaseUnavailable` (existant), journalisée | — |
+| `internal_error` | 500 | tout autre `Throwable` | — |
+
+Conversion des exceptions, **un seul endroit** (`RestAdapter`) : `DomainError` -> statut par table `code` -> statut, corps construit à partir de l'exception; `DatabaseUnavailable` -> 503; tout autre `Throwable`, en particulier toute `PDOException` relancée par le dépôt (`55P03`, `40P01`, `23xxx` inattendues dont `tasks_*` qui seraient un bogue du validateur, erreurs de syntaxe, etc.) -> 500 `internal_error` « Erreur interne. ». Journal (`error_log`) : classe, SQLSTATE (`errorInfo[0]`) pour une `PDOException`, et message; la réponse n'en contient rien (ni SQL, ni noms de table, ni valeurs). Un code inconnu de la table de statut est une erreur interne (500), jamais un 4xx par défaut. Le dépôt ne convertit rien de plus : la traduction SQLSTATE -> domaine reste dans `TaskRepository`, celle domaine -> HTTP dans `RestAdapter`.
+
+### Effet sur `updated_at` (question ouverte, non tranchée)
+
+État **existant** : `TaskService::addRequiredAction`/`removeRequiredAction` appellent `touch()` après un changement effectif, et `TaskServiceTest::testEffectiveLinkChangesAdvanceUpdatedAtOfTheTask` le fixe. Ce comportement n'est pas un choix validé. Dans les deux options, un ajout idempotent ou un retrait d'un lien absent ne modifie jamais `updated_at`, et seule la tâche `{id}` (jamais `{requiredId}`) est concernée.
+
+| | (i) le lien modifie la tâche | (ii) seuls les champs comptent |
+|---|---|---|
+| `updated_at` renvoyé par `PUT`/`DELETE` du lien | avance | inchangé |
+| Code | aucun changement | retirer les deux appels à `touch()` (et `touch()` si plus utilisé) |
+| Tests | aucun changement | inverser `testEffectiveLinkChangesAdvanceUpdatedAtOfTheTask` |
+| Effet produit | un tri par « dernière modification » remonte une tâche dont seul un lien a changé | les liens sont invisibles dans l'horodatage; il faudra une autre information pour savoir qu'ils ont changé |
+| Contrat REST | inchangé (seule la valeur du champ diffère) | inchangé |
+| Concurrence | `touch` prend un verrou de ligne sur la tâche, sans conséquence en mono-utilisateur | aucun verrou de ligne supplémentaire |
+
+Aucune migration, aucun contrat REST ne dépend du choix : il ne bloque que le critère 9 du backlog.
+
+### Impact sur le squelette et organisation du code (proposé)
+
+- `RestAdapter` : le constructeur reçoit aussi `TaskService`; `handle()` passe de l'égalité de chemin à un routage par motifs (méthode + chemin) et conserve la conversion d'erreurs. Les chemins sans route restent 404, `health` est inchangé (200/503/405).
+- Nouvelle classe `Rest\TaskController` : traduit requête -> appel de `TaskService` -> `Response` (aucune règle métier, aucun SQL); `RestAdapter` garde le routage et la table d'erreurs. Séparation proposée dès maintenant pour que P2 (CRUD) ajoute des méthodes sans grossir `RestAdapter`; alternative acceptable : tout dans `RestAdapter` jusqu'à P2.
+- `Bootstrap::kernel()` : construit `taskService($config)` et le passe à `RestAdapter` (la connexion du dépôt est paresseuse : `health` n'ouvre pas de connexion supplémentaire). `Kernel`, `Request`, `Response` : inchangés (`new Response(204)` sans corps suffit; `Request` n'a besoin ni de corps ni de paramètres de requête pour cette tranche).
+- `TaskService`, `TaskRepository`, erreurs de domaine, schéma : inchangés, sauf option (ii) ci-dessus. Aucune migration, aucune dépendance.
+- Consommateurs existants : aucune route existante ne change (ajout seulement); `RestTest` reste valable (`/api/v1/nope` toujours 404). MCP et portail non concernés : ils appelleront les mêmes cas d'usage et réutiliseront le même corps d'erreur (voir « Erreurs de domaine »).
+- Tests : `HttpTestCase::call()` fixe une base injoignable (port 1), donc inutilisable pour les routes de tâches. Proposé : nouvelle classe sous `tests/Integration/` (PostgreSQL réel, suite `DbTestCase`, base remigrée comme `TaskServiceTest`) qui construit `Bootstrap::kernel($this->config)` et appelle `Kernel::handle(new Request(...))`. Cas, un test par ligne : critères 1 à 8 du backlog (ajout puis lecture; cycles A→B→A et A→B→C→A en 409 sans lien créé; auto-dépendance 422; deux 404/422 distincts; ajout deux fois; suppression refusée 409 avec dépendants puis réussie en 204 après retrait; retrait existant et absent en 200); forme exacte du corps d'erreur; identifiant de chemin invalide (`0`, `abc`, `99999999999999999999`) en 404 `not_found`; 405 avec `Allow`; erreur imprévue : un `TaskService` dont le dépôt lève une `PDOException` de SQLSTATE `XX000` donne 500 `internal_error` sans fuite (aucun SQLSTATE ni message dans le corps) et une connexion refusée donne 503.
+
+### À faire valider avant implémentation
+
+1. Les deux routes `GET`/`DELETE /tasks/{id}` dans cette tranche (écart de périmètre n° 6).
+2. `PUT` sur l'URL du lien (au lieu de `POST` avec corps), réponses 200 avec la `Task`, 204 pour la suppression d'une tâche.
+3. Statuts : 422 `required_task_not_found` et `dependency_self`, 404 `not_found` pour un identifiant de chemin non entier.
+4. `DELETE` d'un lien dont la tâche requise n'existe pas : 200.
+5. Séparation `RestAdapter` / `TaskController`.
+6. `updated_at` : option (i) ou (ii), question produit à trancher par l'utilisateur (via le Product Owner), nécessaire avant la vérification finale seulement.
 
 ## Cycle de vie (tranche B) — décisions validées, **non livrées**
 
