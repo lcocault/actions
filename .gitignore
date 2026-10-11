@@ -4,3 +4,4 @@
 !.env.example
 .phpunit.cache/
 .phpunit.result.cache
+.web.pid

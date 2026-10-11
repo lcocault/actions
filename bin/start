@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Démarre l'environnement local : PostgreSQL (compose), migrations, serveur PHP.
+# PHP natif si disponible avec pdo_pgsql, sinon image Docker `actions-php-dev`.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+[ -f .env ] || { echo "Fichier .env absent : cp .env.example .env et définir les mots de passe." >&2; exit 1; }
+set -a; . ./.env; set +a
+HOST="${WEB_HOST:-127.0.0.1}"
+PORT="${WEB_PORT:-8080}"
+IMAGE=actions-php-dev
+WEB=actions-web
+
+if command -v php >/dev/null && php -m | grep -qi '^pdo_pgsql$'; then
+  run_php() { php "$@"; }
+  MODE=natif
+else
+  MODE=docker
+  if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    echo "Construction de l'image $IMAGE (php:8.3-cli + pdo_pgsql)..."
+    docker build -q -t "$IMAGE" - <<'DOCKERFILE'
+FROM php:8.3-cli
+RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev \
+ && docker-php-ext-install pdo_pgsql && rm -rf /var/lib/apt/lists/*
+DOCKERFILE
+  fi
+  run_php() { docker run --rm --network host -v "$PWD":/app -w /app "$IMAGE" php "$@"; }
+fi
+
+echo "1/3 PostgreSQL..."
+docker compose up -d --wait postgres
+
+echo "2/3 Migrations ($MODE)..."
+run_php bin/migrate
+
+echo "3/3 Serveur web sur http://$HOST:$PORT ..."
+docker rm -f "$WEB" >/dev/null 2>&1 || true
+if [ "$MODE" = docker ]; then
+  # Réseau compose : le conteneur joint PostgreSQL par son nom de service.
+  docker run -d --name "$WEB" --network actions_default -p "$HOST:$PORT:8080" \
+    -e DB_HOST=postgres -e DB_PORT=5432 -v "$PWD":/app -w /app "$IMAGE" \
+    php -S 0.0.0.0:8080 -t public public/index.php >/dev/null
+else
+  nohup php -S "$HOST:$PORT" -t public public/index.php >/tmp/actions-web.log 2>&1 &
+  echo $! > .web.pid
+fi
+
+for _ in $(seq 1 20); do
+  curl -fs "http://$HOST:$PORT/api/v1/health" >/dev/null && { echo "OK : http://$HOST:$PORT (santé : /api/v1/health, MCP : POST /mcp)"; exit 0; }
+  sleep 0.5
+done
+echo "Le serveur ne répond pas ; voir : docker logs $WEB" >&2
+exit 1

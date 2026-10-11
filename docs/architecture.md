@@ -17,7 +17,7 @@ Légende des statuts : **existant** (dans le dépôt, vérifiable), **proposé**
 - **Validé** (2026-10-10, utilisateur) : zéro dépendance d'exécution, `phpunit/phpunit` en dev, PHP >= 8.3.
 - **Validé** (2026-10-10, utilisateur) : migrations en `NNNN_nom.sql`, table `schema_migrations` avec checksum, pas de « down », refus hors `local`/`test` sauf option explicite.
 
-Les sections « (proposé) » ci-dessous décrivent ces points validés et déjà implémentés; leur statut est celui de cette liste. Restent **proposés** ou **à vérifier** : tous les points « non vérifiés » AlwaysData, le contrat du portail, la procédure de démarrage détaillée, les variables de configuration et la convention de tests (acceptées de fait par le Developer, sans validation explicite de l'utilisateur).
+Les sections « Contrat REST » et « Contrat MCP » du squelette sont validées et implémentées; les autres sections « (proposé) » ci-dessous couvrant des points de cette liste (migrations, dépendances, PHP) ont le statut de la liste. Restent **proposés** ou **à vérifier** : tous les points « non vérifiés » AlwaysData, le contrat du portail, la procédure de démarrage détaillée, les variables de configuration et la convention de tests (acceptées de fait par le Developer, sans validation explicite de l'utilisateur).
 
 ## Prérequis AlwaysData (vérifiés le 2026-10-10)
 
@@ -76,7 +76,7 @@ Principes :
 
 Appels : REST `GET /api/v1/health` -> `health()`; MCP `ping` -> `ping()`; portail `GET /` -> `ping()` (page statique affichant « fonctionne » à partir du statut). Les trois passent donc par `Diagnostic` (critère 7).
 
-## Contrat REST du squelette (proposé)
+## Contrat REST du squelette (validé le 2026-10-10, implémenté)
 
 Versionnement : préfixe de chemin `/api/v1`. Une évolution compatible (champ ajouté) reste en v1; une rupture crée `/api/v2` à côté.
 
@@ -89,7 +89,7 @@ Format d’erreur REST commun : `{"error":{"code":"<snake_case>","message":"<fra
 
 Tests écrits avant le code : 200 avec base up; 503 avec configuration pointant un port fermé (et corps sans le nom d’hôte ni le mot de passe); 405; 404.
 
-## Contrat MCP du squelette (proposé)
+## Contrat MCP du squelette (validé le 2026-10-10, implémenté)
 
 - Transport : Streamable HTTP (spécification MCP du 2025-06-18 consultée le 2026-10-10; une révision plus récente peut exister, à contrôler à l’implémentation). Endpoint unique `POST /mcp`, sans session (pas de `Mcp-Session-Id`), réponses `application/json` uniquement, sans SSE.
 - `GET /mcp` et `DELETE /mcp` : 405 avec `Allow: POST` (cas prévu par la spécification pour l’absence de flux SSE et de gestion de session).
@@ -136,7 +136,89 @@ Alternative écartée : SDK PHP MCP tiers. Non évalué en détail (maturité, d
 - Comportement : verrou consultatif PostgreSQL pendant l’exécution; chaque migration dans une transaction (DDL transactionnel de PostgreSQL) avec échec explicite et retour de code non nul; une migration déjà appliquée dont le checksum SHA-256 a changé fait échouer l’exécution (jamais de réécriture). Pas de migration « down » : correction par nouvelle migration, retour arrière par restauration de sauvegarde.
 - Commandes : `php bin/migrate` (applique), `php bin/migrate status` (liste appliquées / en attente). Garde-fou : refus si `APP_ENV` n’est ni `local` ni `test`, sauf option explicite `--allow-env=<APP_ENV>`; aucune exécution sur un environnement opérationnel sans autorisation de l’utilisateur.
 - Alternative écartée : Phinx ou Doctrine Migrations (dépendances lourdes pour un besoin de quelques dizaines de lignes; compatibilité hébergement non évaluée).
-- Les questions ouvertes de périodicité et de suppression de dépendance doivent être tranchées avant la première migration du modèle de tâche (hors tranche).
+- **Existant** (relu dans `src/Infrastructure/Migrator.php`) : chaque fichier est exécuté par un unique `PDO::exec($sql)` dans une transaction. Conséquences : plusieurs instructions par fichier, corps de fonction `$$ ... $$` avec points-virgules internes et `CREATE TRIGGER` sont supportés (protocole de requête simple, sans découpage côté PHP; `ATTR_EMULATE_PREPARES=false` ne concerne que `prepare`). Interdits dans un fichier : `BEGIN`/`COMMIT`, `CREATE INDEX CONCURRENTLY`, tout ce qui ne tourne pas en transaction. Le verrou consultatif de session de `bin/migrate` suppose une connexion directe (port 5432, pas pgBouncer 5433 : non vérifié, à respecter pour la migration AlwaysData). Le nom doit respecter `^\d{4}_[a-z0-9_]+$`.
+
+### Schéma des tâches (proposé, à valider; décisions produit du 2026-10-10 **validées**)
+
+**Validé par l'utilisateur (2026-10-10)** : suppression d'une tâche requise par d'autres refusée; périodicité = entier > 0 + unité (jour/semaine/mois/année), colonnes nulles ou renseignées ensemble; mono-utilisateur (ni table `users`, ni propriétaire); périodicité non nulle ⇒ date butée non nulle.
+
+**Proposé** : migration `0001_tasks_and_dependencies.sql` (une seule : table, liens, fonction et trigger doivent être atomiques). Esquisse (le Developer écrit le fichier) :
+
+```sql
+CREATE TABLE tasks (
+  id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  title               text        NOT NULL,
+  category            text        NOT NULL,
+  due_date            date,
+  recurrence_interval integer,
+  recurrence_unit     text,
+  estimated_minutes   integer,
+  description         text,
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  updated_at          timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT tasks_title_not_blank CHECK (btrim(title) <> '' AND char_length(title) <= 255),
+  CONSTRAINT tasks_category_valid  CHECK (category IN ('Pro', 'Perso')),
+  CONSTRAINT tasks_recurrence_valid CHECK (
+    (recurrence_interval IS NULL AND recurrence_unit IS NULL)
+    OR (recurrence_interval > 0 AND recurrence_unit IN ('day','week','month','year'))),
+  CONSTRAINT tasks_recurrence_needs_due_date CHECK (recurrence_interval IS NULL OR due_date IS NOT NULL),
+  CONSTRAINT tasks_estimated_minutes_positive CHECK (estimated_minutes IS NULL OR estimated_minutes > 0)
+);
+CREATE INDEX tasks_due_date_idx ON tasks (due_date) WHERE due_date IS NOT NULL;
+
+CREATE TABLE task_dependencies (
+  task_id          bigint NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
+  required_task_id bigint NOT NULL REFERENCES tasks (id) ON DELETE RESTRICT,
+  PRIMARY KEY (task_id, required_task_id),
+  CONSTRAINT task_dependencies_no_self CHECK (task_id <> required_task_id)
+);
+CREATE INDEX task_dependencies_required_idx ON task_dependencies (required_task_id);
+-- + fonction task_dependencies_check_cycle() et trigger task_dependencies_no_cycle (ci-dessous)
+```
+
+Sens : la ligne `(task_id, required_task_id)` signifie « `task_id` requiert `required_task_id` ». Les contraintes sont nommées explicitement pour que l'application les reconnaisse (`PDOException::errorInfo`, SQLSTATE + nom de contrainte) sans analyser les messages.
+
+Choix de types :
+- **`due_date` en `date`, pas `timestamptz`** : une date butée est un jour calendaire; `timestamptz` ajouterait une heure fictive et des décalages de fuseau (une échéance « le 12 » pourrait devenir le 11 ou le 13 selon le client) et rendrait l'arithmétique de périodicité mois/année ambiguë. Évolution compatible si une heure devient utile : colonne facultative `due_time` ajoutée. Hypothèse produit à confirmer (question 1).
+- **Estimation en minutes entières** (`estimated_minutes integer > 0`) : triable, additionnable, sans ambiguïté de format; `interval` PostgreSQL écarté (sérialisation JSON/MCP plus lourde, sémantique jours/mois inutile). Les interfaces exposent des minutes entières.
+- **Catégorie en `text` + `CHECK`**, pas de type `ENUM` : ajouter une valeur ne demande qu'une nouvelle migration sur le `CHECK`, sans les contraintes d'`ALTER TYPE`. Valeurs exactes `Pro` et `Perso` (sensibles à la casse; la normalisation, si elle existe, est dans la couche Application).
+- **Périodicité** : `recurrence_interval` + `recurrence_unit` (valeurs anglaises stables en base, libellés français côté interfaces). La règle « la tâche se répète après sa date butée » est portée par la donnée; le calcul de la prochaine occurrence est un cas d'usage futur, hors schéma.
+- Identifiants `bigint` identité : opaques pour les clients. `updated_at` est positionné par la couche Application (pas de trigger, règle visible au même endroit que les autres). Aucune colonne de statut/« terminée » : absente du modèle validé (question 2).
+- Suppression : `ON DELETE RESTRICT` côté tâche requise, donc `DELETE` d'une tâche requise par d'autres échoue (SQLSTATE `23503`, contrainte `task_dependencies_required_task_id_fkey`); `ON DELETE CASCADE` côté `task_id` : supprimer une tâche retire ses propres prérequis (elle n'en a plus besoin), ce qui ne viole aucune règle validée.
+
+#### Refus des cycles indirects (proposé)
+
+Règle métier unique, portée par **un trigger PL/pgSQL en base**; la couche Application ne réimplémente pas l'algorithme : elle traduit l'erreur en exception de domaine (`CyclicDependency`), commune à REST (422), MCP (erreur outil) et portail.
+
+Trigger `BEFORE INSERT OR UPDATE OF task_id, required_task_id ON task_dependencies FOR EACH ROW`, fonction `task_dependencies_check_cycle()` :
+1. `PERFORM pg_advisory_xact_lock(hashtext('actions.task_dependencies'))` : sérialise toute écriture de lien (verrou global de transaction, relâché au `COMMIT`; coût négligeable en mono-utilisateur, compatible pgBouncer en mode transaction).
+2. Atteignabilité depuis `NEW.required_task_id` en suivant « requiert » : `WITH RECURSIVE reach(id) AS (SELECT NEW.required_task_id UNION SELECT d.required_task_id FROM task_dependencies d JOIN reach ON d.task_id = reach.id) SELECT 1 FROM reach WHERE id = NEW.task_id`. Si une ligne est trouvée, le nouveau lien fermerait un cycle. `UNION` (et non `UNION ALL`) garantit la terminaison même sur des données déjà cycliques.
+3. Si cycle : `RAISE EXCEPTION '...' USING ERRCODE = '23514', CONSTRAINT = 'task_dependencies_no_cycle'`. L'auto-dépendance reste refusée par le `CHECK` (même SQLSTATE, autre nom de contrainte).
+4. Sinon `RETURN NEW`.
+
+Compromis :
+- **Trigger seul (retenu)** : garantit l'invariant quel que soit le chemin d'écriture (REST, MCP, portail, `psql`, futures importations), sans duplication. Coût : logique en PL/pgSQL, à tester en base réelle (donc tests d'intégration obligatoires), et un message d'erreur sans le chemin du cycle.
+- **Application seule (écarté)** : lecture du graphe puis `INSERT` en deux temps; non sûr en concurrence (deux transactions voient chacune un graphe sans cycle, `A→B` et `B→A` sont validées ensemble) sauf à reprendre un verrou équivalent, et contournable par tout accès hors Application.
+- **Les deux (écarté pour l'instant)** : doublon de règle. Si un message plus riche est voulu (chemin `A → B → A`), l'Application peut, *après* une erreur du trigger, relire le chemin pour l'afficher : affichage seulement, pas de décision.
+- **Concurrence** : en `READ COMMITTED` (défaut PostgreSQL, à ne pas changer), chaque instruction prend un instantané neuf : après obtention du verrou, la requête de l'étape 2 voit les liens validés par la transaction concurrente, donc la seconde insertion échoue. En `REPEATABLE READ`/`SERIALIZABLE` l'instantané antérieur au verrou pourrait ne pas les voir : ne pas utiliser ces niveaux pour écrire des liens (à écrire dans les conventions du Developer). Un `INSERT` multi-lignes (`A→B, B→A` en une instruction) doit être refusé : les lignes précédentes de la même instruction sont visibles du trigger (fonction volatile), **à confirmer par un test**, non exécuté ici. Risque d'interblocage : une seule clé de verrou, donc pas de cycle de verrous entre liens; un `DELETE` de tâche concurrent est arbitré par PostgreSQL via les clés étrangères.
+- Performance : parcours borné par le nombre de tâches atteignables; sans objet à l'échelle d'un outil personnel. Index `task_dependencies_required_idx` utile aux recherches inverses (« qui requiert X ») et aux contrôles `RESTRICT`; la clé primaire couvre `task_id`.
+
+Mapping d'erreurs (à implémenter dans `Application`, un seul endroit) : `23514` + `task_dependencies_no_cycle` ou `task_dependencies_no_self` -> `InvalidDependency`/`CyclicDependency`; `23505` sur la clé primaire des liens -> doublon (idempotent ou 409, à décider avec le contrat REST); `23503` côté `required_task_id` à l'insertion -> tâche requise inconnue; `23503` à la suppression -> `TaskIsRequired` (409), la liste des dépendants étant lue pour le message; `55P03`/`40P01` -> erreur interne générique.
+
+Compatibilité hébergement : PostgreSQL 16–18 (vérifié le 2026-10-10, voir tableau AlwaysData). Utilisés : `GENERATED ... AS IDENTITY`, CTE récursive, PL/pgSQL (inclus par défaut), advisory locks : tous disponibles depuis PostgreSQL 10 ou moins; aucune extension. **Non vérifié** : droit de créer une fonction/un trigger avec le rôle de base AlwaysData et comportement de pgBouncer; à tester sur une base AlwaysData jetable avant la tranche de déploiement (aucune migration sans autorisation de l'utilisateur).
+
+Analyse d'impact : aucune donnée ni consommateur existant (aucune migration métier appliquée, seul `schema_migrations` existe). REST, MCP et portail n'ont pas encore de contrat sur les tâches : les contrats CRUD seront écrits dans une étape suivante à partir de ce schéma. Évolutions compatibles prévues : colonnes facultatives ajoutées par migration (statut, `due_time`), nouvelle valeur de catégorie par modification du `CHECK`.
+
+#### Tests d'intégration du schéma (proposé)
+
+Base `actions_test` migrée par `bin/migrate` (donc la migration 0001 est testée sur base vide, et sa rejouabilité); chaque test isole ses données (transaction annulée ou `TRUNCATE tasks RESTART IDENTITY CASCADE`). Un test par règle, vérifiant le SQLSTATE et le nom de contrainte :
+- tâche minimale valide; titre vide ou blanc, catégorie hors `Pro`/`Perso`, minutes `<= 0`, intervalle `<= 0`, unité inconnue : refusés.
+- périodicité à moitié renseignée refusée; périodicité sans date butée refusée; date seule acceptée.
+- auto-dépendance refusée; lien en double refusé; tâche requise inexistante refusée.
+- cycles : `A→B, B→A`; indirect `A→B, B→C, C→A`; insertion multi-lignes formant un cycle; `UPDATE` d'un lien qui créerait un cycle; graphe en losange (sans cycle) accepté.
+- suppression : tâche requise par une autre refusée (`23503`); tâche sans dépendant supprimée avec retrait de ses propres liens.
+- concurrence déterministe, sans processus parallèle : connexion 1 `BEGIN` + insertion `A→B` non validée; connexion 2 avec `SET lock_timeout = '500ms'` tente `B→A` et doit échouer en `55P03` (le verrou sérialise); après `COMMIT` de la connexion 1, `B→A` échoue en `23514`.
+- les tests de la couche Application vérifient seulement la traduction SQLSTATE -> exceptions de domaine.
 
 ## Dépendances Composer (proposé)
 

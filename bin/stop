@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Arrête le serveur PHP et PostgreSQL. Les données sont conservées (volume).
+# Option --purge : supprime aussi le volume de la base (perte de données locales).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+docker rm -f actions-web >/dev/null 2>&1 && echo "Serveur web (conteneur) arrêté." || true
+if [ -f .web.pid ]; then
+  kill "$(cat .web.pid)" 2>/dev/null && echo "Serveur web (natif) arrêté." || true
+  rm -f .web.pid
+fi
+
+if [ "${1:-}" = "--purge" ]; then
+  docker compose down -v
+  echo "PostgreSQL arrêté, volume supprimé."
+else
+  docker compose down
+  echo "PostgreSQL arrêté (données conservées)."
+fi

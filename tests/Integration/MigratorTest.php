@@ -31,7 +31,9 @@ final class MigratorTest extends DbTestCase
 
     private function reset(): void
     {
-        $this->pdo->exec('DROP TABLE IF EXISTS schema_migrations, mig_test_a, mig_test_b');
+        // Les tables métier (migration 0001) appartiennent à TaskSchemaTest, qui les recrée : on repart d'une base vide.
+        $this->pdo->exec('DROP TABLE IF EXISTS task_dependencies, tasks, schema_migrations, mig_test_a, mig_test_b CASCADE');
+        $this->pdo->exec('DROP FUNCTION IF EXISTS task_dependencies_check_cycle()');
     }
 
     private function tables(): array

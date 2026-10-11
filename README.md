@@ -6,6 +6,8 @@ Gestionnaire de tâches (API REST, MCP, portail web). Voir [CLAUDE.md](CLAUDE.md
 
 ## Démarrage local
 
+Raccourci : `bin/start` démarre PostgreSQL, applique les migrations et lance le serveur web (http://127.0.0.1:8080); `bin/stop` arrête tout (`--purge` supprime aussi les données locales). Sans PHP natif, l'image Docker `actions-php-dev` est construite au besoin. Procédure manuelle ci-dessous.
+
 Prérequis : PHP >= 8.3 avec `pdo_pgsql`, Composer, Docker ou Podman.
 
 1. `cp .env.example .env`, puis remplacer les mots de passe `changez-moi` (`.env` est ignoré par Git). Si le port 5432 est pris, changer `DB_PORT` (utilisé aussi pour publier le conteneur).
