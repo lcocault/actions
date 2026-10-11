@@ -1,5 +1,14 @@
 # Journal des changements
 
+## 2026-10-11
+
+- Tranche A, couche commune des tâches (`src/Application`), sans REST/MCP/portail ni état : `TaskService` (7 cas d'usage : `create`, `get`, `list`, `update`, `delete`, `addRequiredAction`, `removeRequiredAction`), `TaskValidator` (pur, fail-fast), `TaskRepository` (tout le SQL PDO paramétré, colonnes toujours nommées, traduction SQLSTATE -> exceptions, transaction `READ COMMITTED`), erreurs de domaine `DomainError`, `InvalidTask`, `TaskNotFound`, `RequiredTaskNotFound`, `InvalidDependency`, `CyclicDependency`, `TaskIsRequired`. `Bootstrap::taskService()` compose le service; les adaptateurs ne l'utilisent pas encore.
+- Comportements : titre stocké tel quel (pas de `trim`), refusé s'il n'est fait que de blancs (espaces, tabulations, retours, espaces Unicode); clés inconnues refusées (`field_unknown`); date butée passée acceptée; ajout d'un lien existant et retrait d'un lien absent idempotents; suppression d'un id inconnu = `TaskNotFound`; `update` valide l'état fusionné et n'écrit pas si rien ne change; ajouter/retirer effectivement un lien met à jour `updated_at` de la tâche (proposé par l'architecture, non encore confirmé).
+- Interprétations de la conception : `title` absent -> `title_blank`, `category` absente -> `category_invalid`; clé inconnue d'une périodicité -> `field_unknown` avec `field` = `recurrence.<clé>`; `recurrence_requires_due_date` porte `field` = `recurrence`.
+- Tests : `tests/Unit/TaskValidatorTest` (57 tests) et `tests/Integration/TaskServiceTest` (54 tests, PostgreSQL réel, base `actions_test` remigrée dans `setUp`). Suite complète : 171 tests, OK.
+- Migrations : aucune ajoutée (schéma 0001 inchangé); `bin/migrate` rejoué en local (« Rien à appliquer »). Rien exécuté sur AlwaysData. Aucune dépendance ajoutée.
+- Limites : aucune concurrence réelle testée au niveau service (le trigger l'est dans `TaskSchemaTest`); les erreurs SQL inattendues sont relancées telles quelles (à convertir en `internal_error` par les adaptateurs); `mbstring` sur la version PHP AlwaysData cible non vérifié.
+
 ## 2026-10-10
 
 - Migration `0001_tasks_and_dependencies.sql` : tables `tasks` et `task_dependencies`, contraintes nommées, index, fonction PL/pgSQL `task_dependencies_check_cycle()` et trigger `task_dependencies_no_cycle` (verrou `pg_advisory_xact_lock`, refus des cycles), `RESTRICT` côté tâche requise, `CASCADE` côté `task_id`. Pas de statut « terminée ». Appliquée uniquement sur la base locale de développement (`actions`, APP_ENV=local) et sur `actions_test` via les tests; rien exécuté sur AlwaysData.
