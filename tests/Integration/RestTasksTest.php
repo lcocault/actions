@@ -226,7 +226,7 @@ final class RestTasksTest extends DbTestCase
 
     public function testUnknownSubPathsGive404(): void
     {
-        foreach (['/api/v1/tasks', '/api/v1/tasks/1/required-actions', '/api/v1/tasks/1/other/2', '/api/v1/tasks/1/required-actions/2/x'] as $path) {
+        foreach (['/api/v1/tasks/1/required-actions', '/api/v1/tasks/1/other/2', '/api/v1/tasks/1/required-actions/2/x'] as $path) {
             $this->assertError($this->send('GET', $path), 404, 'not_found');
         }
     }
@@ -235,10 +235,10 @@ final class RestTasksTest extends DbTestCase
     {
         $a = $this->make('A');
         $b = $this->make('B');
-        foreach (['POST', 'PUT', 'PATCH'] as $method) {
+        foreach (['POST', 'PUT'] as $method) {
             $r = $this->send($method, "/api/v1/tasks/$a");
             $this->assertError($r, 405, 'method_not_allowed');
-            self::assertSame('GET, DELETE', $r->headers['Allow']);
+            self::assertSame('GET, PATCH, DELETE', $r->headers['Allow']);
         }
         foreach (['GET', 'POST', 'PATCH'] as $method) {
             $r = $this->send($method, "/api/v1/tasks/$a/required-actions/$b");

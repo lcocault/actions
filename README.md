@@ -2,7 +2,7 @@
 
 Gestionnaire de tâches (API REST, MCP, portail web). Voir [CLAUDE.md](CLAUDE.md), [BACKLOG.md](BACKLOG.md), [docs/architecture.md](docs/architecture.md).
 
-État : squelette uniquement (points d'entrée vides, pas de fonctionnalité de tâche). Aucune authentification : ne lier qu'à `127.0.0.1`.
+État (local uniquement) : squelette, schéma et couche commune des tâches; en REST, lecture et suppression d'une tâche et gestion des actions requises (`GET`/`DELETE /api/v1/tasks/{id}`, `PUT`/`DELETE .../required-actions/{id}`). Création, liste et modification (`POST`/`GET /api/v1/tasks`, `PATCH /api/v1/tasks/{id}`) : contrat écrit, pas encore implémenté. MCP et portail ne servent pas encore les tâches; états des tâches à venir. Aucune authentification : ne lier qu'à `127.0.0.1`.
 
 ## Démarrage local
 

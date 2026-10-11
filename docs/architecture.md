@@ -4,7 +4,7 @@ Légende des statuts : **existant** (dans le dépôt, vérifiable), **proposé**
 
 ## État du dépôt
 
-**Existant** (relu le 2026-10-11) : documentation; squelette (`src/`, `bin/migrate`, `compose.yaml`, `.env.example`, `tests/`, `README.md`); migration `database/migrations/0001_tasks_and_dependencies.sql` (tables `tasks`, `task_dependencies`, trigger anti-cycle) et `tests/Integration/TaskSchemaTest.php`, appliqués en local seulement (rien sur AlwaysData). La couche commune des tâches (tranche A) existe : `TaskService`, `TaskValidator`, `TaskRepository`, six erreurs de domaine, `Bootstrap::taskService()`, `TaskValidatorTest`, `TaskServiceTest`; aucun adaptateur (REST, MCP, portail) ne l'appelle encore, `RestAdapter` ne connaît que `GET /api/v1/health`. Relecture de l'Architecte au 2026-10-11 : SQL de 0001, `TaskRepository`, `TaskService`, `RestAdapter`, `Kernel`, `Bootstrap`, `Request`/`Response`, tests `TaskSchemaTest`, `TaskServiceTest` (noms et passages cités) et `RestTest`. Aucun test n'a été rejoué par l'Architecte (pas d'exécution possible dans son rôle) : la vérification reste celle du Developer/PO.
+**Existant** (relu le 2026-10-11) : documentation; squelette (`src/`, `bin/migrate`, `compose.yaml`, `.env.example`, `tests/`, `README.md`); migration `database/migrations/0001_tasks_and_dependencies.sql` (tables `tasks`, `task_dependencies`, trigger anti-cycle) et `tests/Integration/TaskSchemaTest.php`, appliqués en local seulement (rien sur AlwaysData). La couche commune des tâches (tranche A) existe : `TaskService`, `TaskValidator`, `TaskRepository`, six erreurs de domaine, `Bootstrap::taskService()`, `TaskValidatorTest`, `TaskServiceTest`; aucun adaptateur (REST, MCP, portail) ne l'appelle encore, `RestAdapter` ne connaît que `GET /api/v1/health`. La tranche REST « dépendances » (`GET`/`DELETE /tasks/{id}`, liens `PUT`/`DELETE`) existe en local (`TaskController`, `RestAdapter`, `RestTasksTest`); le contrat de `POST`/`GET /tasks` et `PATCH /tasks/{id}` est écrit (section « Tranche CRUD REST »), non implémenté. Relecture de l'Architecte au 2026-10-11 : SQL de 0001, `TaskRepository`, `TaskService`, `RestAdapter`, `Kernel`, `Bootstrap`, `Request`/`Response`, tests `TaskSchemaTest`, `TaskServiceTest` (noms et passages cités) et `RestTest`. Aucun test n'a été rejoué par l'Architecte (pas d'exécution possible dans son rôle) : la vérification reste celle du Developer/PO.
 
 ## Décisions validées (tranche « squelette »)
 
@@ -263,10 +263,10 @@ Forme d'une tâche en sortie (`Task`) :
 
 Règles transverses :
 - `update` valide l'état **fusionné** (ancienne valeur + changements) : effacer `due_date` d'une tâche périodique est refusé (`recurrence_requires_due_date`); `recurrence: null` efface intervalle et unité ensemble. Lecture de la ligne `SELECT ... FOR UPDATE` dans la même transaction que l'écriture. `update` n'accepte ni `id`, ni `required_actions`, ni `created_at`/`updated_at`, ni (tranche B) l'état : clé inconnue = `InvalidTask` `field_unknown` (une faute de frappe ne doit pas être ignorée en silence, notamment côté MCP).
-- `updated_at = now()` est positionné par l'UPDATE du dépôt (pas de trigger). Un `update` dont aucun champ ne change la valeur n'écrit pas et ne change pas `updated_at`. **Proposé, à confirmer** : ajouter ou retirer un lien effectif modifie `updated_at` de la tâche `taskId` (pas un no-op idempotent).
+- `updated_at = now()` est positionné par l'UPDATE du dépôt (pas de trigger). Un `update` dont aucun champ ne change la valeur n'écrit pas et ne change pas `updated_at`. **Validé** (utilisateur, 2026-10-11, option (i)) : ajouter ou retirer un lien effectif modifie `updated_at` de la tâche `taskId`; un ajout idempotent ou le retrait d'un lien absent le laisse inchangé.
 - `addRequiredAction` : ordre des contrôles fixe : `taskId` connu, `requiredTaskId` connu, puis `INSERT ... ON CONFLICT (task_id, required_task_id) DO NOTHING` (idempotence **validée** : le lien existant renvoie un succès, sans doublon; le trigger ne produit pas de faux cycle sur un lien existant, car un graphe valide est acyclique). L'auto-dépendance (`taskId = requiredTaskId`, tâche connue) est refusée **par le `CHECK`** puis traduite, sans prévérification en PHP (pas de règle dupliquée). `(A, A)` avec `A` inconnue renvoie `TaskNotFound`.
-- `removeRequiredAction` : lien absent = succès (idempotent par symétrie; **proposé, à valider**).
-- `delete` : `DELETE` direct, **en autocommit** (instruction unique donc atomique; **validé par l'Architecte le 2026-10-11**, écart (c) du Developer accepté : une transaction explicite n'apporterait rien); `23503` -> la liste des dépendants est lue ensuite (`id`, `title`) et `TaskIsRequired` est levée. Tolérance documentée : si un lien est retiré entre le refus et cette lecture, `dependents` peut être incomplet ou vide, le refus restant exact au moment où il a eu lieu. Aucune prévérification (la base arbitre aussi la concurrence). Identifiant inconnu (0 ligne) : `TaskNotFound` (**proposé**, non idempotent). Les liens propres de la tâche partent par `ON DELETE CASCADE`.
+- `removeRequiredAction` : lien absent = succès (idempotent; **validé**, 2026-10-11).
+- `delete` : `DELETE` direct, **en autocommit** (instruction unique donc atomique; **validé par l'Architecte le 2026-10-11**, écart (c) du Developer accepté : une transaction explicite n'apporterait rien); `23503` -> la liste des dépendants est lue ensuite (`id`, `title`) et `TaskIsRequired` est levée. Tolérance documentée : si un lien est retiré entre le refus et cette lecture, `dependents` peut être incomplet ou vide, le refus restant exact au moment où il a eu lieu. Aucune prévérification (la base arbitre aussi la concurrence). Identifiant inconnu (0 ligne) : `TaskNotFound` (**validé**, non idempotent). Les liens propres de la tâche partent par `ON DELETE CASCADE`.
 - `list` : sans filtre ni pagination (outil mono-utilisateur); filtres/pagination = ajouts facultatifs compatibles, à demander au Product Owner si utiles.
 
 ### Validation (`TaskValidator`, proposé)
@@ -330,7 +330,7 @@ Aucune dépendance nouvelle. Fonctions PHP utilisées : `mbstring` (déjà en co
 
 ## Tranche « dépendances entre tâches » : REST des actions requises
 
-Statuts : **validé** = décision de l'utilisateur transmise le 2026-10-11 (REST seul et local; ajout/retrait unitaire d'un lien en sous-ressource; cycle refusé en 409 `dependency_cycle` sans chemin; retrait d'un lien absent et ajout d'un lien existant idempotents). Tout le reste de la section est **proposé**, non opposable au Developer.
+Statuts : **validé** = décision de l'utilisateur transmise le 2026-10-11 (REST seul et local; ajout/retrait unitaire d'un lien en sous-ressource; cycle refusé en 409 `dependency_cycle` sans chemin; retrait d'un lien absent et ajout d'un lien existant idempotents). Ont aussi été validés ensuite (2026-10-11) : `updated_at` modifié par un lien effectif (option (i)) et les codes `task_not_found`, `dependency_self`, `required_task_not_found`, `task_is_required` avec leurs statuts (404, 422, 422, 409). Le reste de la section est **proposé** (ou livré, voir le code), non opposable au Developer tant que non validé; `Allow` de `/tasks/{id}` est désormais `GET, PATCH, DELETE` (voir la tranche CRUD REST).
 
 ### Relecture de la tranche A (2026-10-11)
 
@@ -360,7 +360,7 @@ Sortie `Task` : l'objet défini en « Cas d'usage » (`id`, `title`, `category`,
 
 Ordre des contrôles de `PUT` (celui du service, à ne pas modifier) : identifiants du chemin, `task_not_found`, `required_task_not_found`, `dependency_self`, `dependency_cycle`. Donc `PUT /tasks/7/required-actions/7` : 404 si 7 n'existe pas, sinon 422 `dependency_self`. `DELETE` d'un lien dont `{requiredId}` n'existe pas : 200 (conséquence du retrait idempotent; le service ne contrôle pas `{requiredId}`).
 
-Identifiants du chemin : motif `[1-9][0-9]*` et valeur tenant dans un entier PHP 64 bits (contrôle par `filter_var(FILTER_VALIDATE_INT)`, jamais un simple `(int)` qui sature); sinon 404 `not_found` (ressource inexistante, pas une erreur de domaine). Un chemin connu avec une méthode non prévue : 405 `method_not_allowed` avec `Allow` (`PUT, DELETE` pour le lien; `GET, DELETE` pour la tâche). Un `{requiredId}` valide mais inexistant dans `PUT` reste 422 (cohérent avec la table des erreurs de domaine, valable aussi pour MCP) plutôt que 404.
+Identifiants du chemin : motif `[1-9][0-9]*` et valeur tenant dans un entier PHP 64 bits (contrôle par `filter_var(FILTER_VALIDATE_INT)`, jamais un simple `(int)` qui sature); sinon 404 `not_found` (ressource inexistante, pas une erreur de domaine). Un chemin connu avec une méthode non prévue : 405 `method_not_allowed` avec `Allow` (`PUT, DELETE` pour le lien; `GET, PATCH, DELETE` pour la tâche depuis la tranche CRUD REST, `GET, DELETE` auparavant). Un `{requiredId}` valide mais inexistant dans `PUT` reste 422 (cohérent avec la table des erreurs de domaine, valable aussi pour MCP) plutôt que 404.
 
 ### Erreurs (proposé)
 
@@ -368,20 +368,20 @@ Format commun existant `{"error":{"code","message","details"?}}`; `message` en f
 
 | `code` | HTTP | Origine | `details` |
 |---|---|---|---|
-| `task_not_found` | 404 | `TaskNotFound` | `{id}` |
-| `required_task_not_found` | 422 | `RequiredTaskNotFound` | `{required_task_id}` |
-| `dependency_self` | 422 | `InvalidDependency` | `{task_id}` |
+| `task_not_found` | 404 (**validé**) | `TaskNotFound` | `{id}` |
+| `required_task_not_found` | 422 (**validé**) | `RequiredTaskNotFound` | `{required_task_id}` |
+| `dependency_self` | 422 (**validé**) | `InvalidDependency` | `{task_id}` |
 | `dependency_cycle` | 409 | `CyclicDependency` (**validé** : sans chemin du cycle) | `{task_id, required_task_id}` |
-| `task_is_required` | 409 | `TaskIsRequired` | `{id, dependents:[{id,title}]}` |
+| `task_is_required` | 409 (**validé**) | `TaskIsRequired` | `{id, dependents:[{id,title}]}` |
 | `not_found`, `method_not_allowed` | 404, 405 | routage (existant) | — |
 | `service_unavailable` | 503 | `DatabaseUnavailable` (existant), journalisée | — |
 | `internal_error` | 500 | tout autre `Throwable` | — |
 
 Conversion des exceptions, **un seul endroit** (`RestAdapter`) : `DomainError` -> statut par table `code` -> statut, corps construit à partir de l'exception; `DatabaseUnavailable` -> 503; tout autre `Throwable`, en particulier toute `PDOException` relancée par le dépôt (`55P03`, `40P01`, `23xxx` inattendues dont `tasks_*` qui seraient un bogue du validateur, erreurs de syntaxe, etc.) -> 500 `internal_error` « Erreur interne. ». Journal (`error_log`) : classe, SQLSTATE (`errorInfo[0]`) pour une `PDOException`, et message; la réponse n'en contient rien (ni SQL, ni noms de table, ni valeurs). Un code inconnu de la table de statut est une erreur interne (500), jamais un 4xx par défaut. Le dépôt ne convertit rien de plus : la traduction SQLSTATE -> domaine reste dans `TaskRepository`, celle domaine -> HTTP dans `RestAdapter`.
 
-### Effet sur `updated_at` (question ouverte, non tranchée)
+### Effet sur `updated_at` (tranché : option (i), **validé** le 2026-10-11)
 
-État **existant** : `TaskService::addRequiredAction`/`removeRequiredAction` appellent `touch()` après un changement effectif, et `TaskServiceTest::testEffectiveLinkChangesAdvanceUpdatedAtOfTheTask` le fixe. Ce comportement n'est pas un choix validé. Dans les deux options, un ajout idempotent ou un retrait d'un lien absent ne modifie jamais `updated_at`, et seule la tâche `{id}` (jamais `{requiredId}`) est concernée.
+Décision : un ajout ou retrait effectif de lien avance `updated_at` de la tâche `{id}`. État **existant** et conforme : `TaskService::addRequiredAction`/`removeRequiredAction` appellent `touch()` après un changement effectif, et `TaskServiceTest::testEffectiveLinkChangesAdvanceUpdatedAtOfTheTask` le fixe; aucun changement de code. L'option (ii) est écartée. Comparatif conservé pour mémoire. Dans les deux options, un ajout idempotent ou un retrait d'un lien absent ne modifie jamais `updated_at`, et seule la tâche `{id}` (jamais `{requiredId}`) est concernée.
 
 | | (i) le lien modifie la tâche | (ii) seuls les champs comptent |
 |---|---|---|
@@ -392,7 +392,7 @@ Conversion des exceptions, **un seul endroit** (`RestAdapter`) : `DomainError` -
 | Contrat REST | inchangé (seule la valeur du champ diffère) | inchangé |
 | Concurrence | `touch` prend un verrou de ligne sur la tâche, sans conséquence en mono-utilisateur | aucun verrou de ligne supplémentaire |
 
-Aucune migration, aucun contrat REST ne dépend du choix : il ne bloque que le critère 9 du backlog.
+Aucune migration, aucun contrat REST ne dépend du choix; plus de blocage du critère 9 du backlog.
 
 ### Impact sur le squelette et organisation du code (proposé)
 
@@ -410,7 +410,99 @@ Aucune migration, aucun contrat REST ne dépend du choix : il ne bloque que le c
 3. Statuts : 422 `required_task_not_found` et `dependency_self`, 404 `not_found` pour un identifiant de chemin non entier.
 4. `DELETE` d'un lien dont la tâche requise n'existe pas : 200.
 5. Séparation `RestAdapter` / `TaskController`.
-6. `updated_at` : option (i) ou (ii), question produit à trancher par l'utilisateur (via le Product Owner), nécessaire avant la vérification finale seulement.
+6. `updated_at` : **tranché**, option (i) validée le 2026-10-11 (voir plus haut).
+
+## Tranche « CRUD REST » : `POST`, liste et `PATCH` des tâches
+
+Statuts (rédigé le 2026-10-11) : **existant** = présent dans le dépôt (relu : `RestAdapter`, `TaskController`, `Request`, `Response`, `TaskService`, `TaskValidator`, `RestTasksTest`); **validé** = décisions de l'utilisateur du 2026-10-11 (BACKLOG, « Décisions validées (CRUD REST) ») : `PATCH` partiel (`null` efface, absent inchangé); liste sans option, triée date butée croissante (sans date en dernier) puis `id`; clé inconnue ou non modifiable (`id`, `required_actions`, `created_at`, `updated_at`) en 422 `field_unknown`; titre stocké tel quel; titre <= 255 caractères; estimation en minutes entières; codes `task_not_found`, `dependency_self`, `required_task_not_found`, `task_is_required` (ces quatre passent de « proposé » à **validé** dans la section précédente); `DELETE` d'un `id` inconnu en 404 non idempotent; **validé aussi** (utilisateur, 2026-10-11, transmis par la session principale) : le contrat dans son ensemble, dont 400 `invalid_json` contrôlé avant le 404 d'un `PATCH` et `Location` sur le 201; `null` explicite sur `title`/`category` = 422 `field_type_invalid` (absent au `POST` : `title_blank` / `category_invalid`); `Content-Type` non contrôlé; chaîne de requête ignorée sur `GET /tasks`. Les mentions « (proposé) » plus bas dans cette section valent donc **validé**, sauf la taille du corps (aucune limite applicative; `post_max_size` non vérifié sur AlwaysData).
+
+**Implémenté** (Developer) : `POST /tasks`, `GET /tasks`, `PATCH /tasks/{id}` sont livrés; 271 tests OK; appel HTTP réel fait sur la base de test (rapport du Developer, non rejoué par l'Architecte). Les cas d'usage `create`, `list`, `update` (tranche A) sont inchangés.
+
+### Contrat
+
+Versionnement : `/api/v1`, ajout seulement (routes nouvelles, aucune route existante modifiée). Corps JSON UTF-8; `Content-Type: application/json` en réponse. Sortie `Task` : objet défini en « Cas d'usage », sans enveloppe. Format d'erreur : `{"error":{"code","message","details"?}}` (existant, `details` absent s'il est vide).
+
+**`POST /api/v1/tasks`** (cas d'usage `create`)
+- Corps : objet JSON. Obligatoires : `title` (chaîne, 1 à 255 caractères, pas uniquement des blancs, stockée telle quelle), `category` (`"Pro"` ou `"Perso"`, casse exacte). Facultatifs, absent ou `null` = non renseigné : `due_date` (`"YYYY-MM-DD"`, date réelle, passée autorisée), `recurrence` (`{"interval":int>0,"unit":"day"|"week"|"month"|"year"}`, exige `due_date`), `estimated_minutes` (entier > 0, en minutes), `description` (chaîne). Toute autre clé, dont `id`, `required_actions`, `created_at`, `updated_at` : 422 `field_unknown`.
+- 201, corps `Task`, en-tête `Location: /api/v1/tasks/{id}` (proposé). Tous les champs facultatifs absents valent `null`; `required_actions` vaut `[]`.
+- Erreurs : 400 `invalid_json`; 422 (voir « Codes de validation »); 500 / 503.
+
+**`GET /api/v1/tasks`** (cas d'usage `list`)
+- Aucun paramètre ni option : une chaîne de requête éventuelle est ignorée (validé : « sans option »; pas d'erreur sur un paramètre inconnu, pour ne pas figer un comportement que filtres et pagination futurs devront changer).
+- 200, corps : tableau JSON de `Task`, trié par `due_date` croissante, tâches sans date à la fin, puis `id` croissant. Aucune tâche : 200 et `[]`. Le tri est fait par `TaskRepository::findAll` (existant) : l'adaptateur ne retrie pas.
+
+**`PATCH /api/v1/tasks/{id}`** (cas d'usage `update`)
+- Corps : objet JSON, mêmes champs et mêmes règles que `POST`, tous facultatifs. Clé présente : champ modifié; `null` : champ facultatif effacé (`due_date`, `recurrence`, `estimated_minutes`, `description`); clé absente : inchangé. `title` et `category` ne sont pas effaçables (`null` : 422 `field_type_invalid`, comportement existant du validateur, relu : `text()` et `category()` refusent un non-chaîne; à `POST`, un `title`/`category` absent donne `title_blank` / `category_invalid`, un `null` explicite `field_type_invalid`). La validation porte sur l'état fusionné : effacer `due_date` d'une tâche périodique, ou donner `recurrence` à une tâche sans date butée, est refusé (`recurrence_requires_due_date`). `{}` est un corps valide : no-op.
+- 200, corps `Task` à jour. Modification sans effet (valeurs identiques) : 200 et `updated_at` inchangé; modification effective : `updated_at` avance, `created_at` jamais (existant).
+- Erreurs : 400 `invalid_json`; 404 `task_not_found`; 422; 405; 500 / 503.
+- `PUT /tasks/{id}` (remplacement complet) n'existe pas : 405.
+
+**Déjà existants, inchangés** : `GET /tasks/{id}` (200 / 404), `DELETE /tasks/{id}` (204 / 404 `task_not_found` non idempotent / 409 `task_is_required`), `PUT` et `DELETE /tasks/{id}/required-actions/{requiredId}`. Les liens ne se gèrent que par cette sous-ressource (validé) : `required_actions` dans un corps `POST`/`PATCH` est 422 `field_unknown`.
+
+### Codes d'erreur ajoutés ou précisés
+
+| Situation | HTTP | `code` | `details` |
+|---|---|---|---|
+| Corps vide, JSON invalide, ou JSON valide qui n'est pas un objet (tableau, chaîne, nombre, `null`) | 400 | `invalid_json` (**proposé**), message « Le corps doit être un objet JSON. » | — (aucun détail de l'analyseur) |
+| Règle de validation violée (`InvalidTask`) | 422 | le `code` de la règle | `{field}` |
+| Clé inconnue ou non modifiable | 422 | `field_unknown` (**validé**) | `{field}` (`recurrence.<clé>` pour une clé inconnue de `recurrence`) |
+| Identifiant inconnu (`PATCH`, `GET`, `DELETE`) | 404 | `task_not_found` (**validé**) | `{id}` |
+| Identifiant de chemin non entier positif | 404 | `not_found` | — |
+| Méthode non prévue sur un chemin connu | 405 | `method_not_allowed`, en-tête `Allow` | — |
+| Base injoignable | 503 | `service_unavailable` | — |
+| Toute autre exception, dont `PDOException` | 500 | `internal_error`, « Erreur interne. » | — : ni SQL, ni SQLSTATE, ni trace, ni valeur; détail au journal (`error_log`) |
+
+Codes de validation (existants, `TaskValidator`, tous en 422 avec `details.field`) : `title_blank`, `title_too_long`, `text_invalid`, `category_invalid`, `due_date_invalid`, `recurrence_interval_invalid`, `recurrence_unit_invalid`, `recurrence_incomplete`, `recurrence_requires_due_date`, `estimated_minutes_invalid`, `field_type_invalid`, `field_unknown`. Les `code` ne sont jamais réécrits par l'adaptateur. `InvalidTask` est un `DomainError` : il lui faut une entrée **422 pour toute instance d'`InvalidTask`** dans la conversion d'`RestAdapter`. Comme les `code` de validation sont une famille ouverte, la table `DOMAIN_STATUS` (par `code`) ne convient pas : conversion par classe d'abord (`InvalidTask` -> 422), puis par table pour les autres. Si une classe d'erreur sans statut arrive, c'est 500 (comportement existant).
+
+**405 et `Allow`** (le statut et le corps `method_not_allowed` sont existants, les valeurs de `Allow` nouvelles) :
+
+| Chemin | `Allow` |
+|---|---|
+| `/api/v1/tasks` | `GET, POST` |
+| `/api/v1/tasks/{id}` | `GET, PATCH, DELETE` (remplace `GET, DELETE`) |
+| `/api/v1/tasks/{id}/required-actions/{requiredId}` | `PUT, DELETE` (inchangé) |
+
+`HEAD` et `OPTIONS` ne sont pas gérés : 405 (pas de CORS dans cette tranche, API locale sans navigateur).
+
+### Corps de requête et ordre des contrôles (proposé)
+
+- Décodage : `json_decode($body, false, 32)` avec `JSON_THROW_ON_ERROR` ou équivalent; un objet JSON (`stdClass`) est exigé, ce qui distingue `{}` (valide) de `[]` (400). L'objet est ensuite converti en tableau associatif pour `TaskService` (les sous-objets, dont `recurrence`, sont convertis de même; un `recurrence` fourni sous forme de liste JSON reste une liste PHP et est donc refusé par le validateur existant (**existant**, relu le 2026-10-11) : `[]` donne 422 `recurrence_incomplete`, `[1,"day"]` donne 422 `field_unknown` avec `details.field` = `recurrence.0`; ce n'est pas `field_type_invalid`. Le statut (422) et l'absence d'écriture sont seuls contractuels pour ce cas; l'adaptateur ne le détecte pas lui-même, pour ne pas dupliquer de règle). Un objet avec une clé en double : la dernière gagne (comportement de PHP, accepté). `Content-Type` n'est pas contrôlé (cohérent avec les routes existantes qui ignorent le corps); à resserrer plus tard serait une rupture : décision proposée, voir question 3.
+- Ordre pour `PATCH` : chemin (`not_found`), méthode (405), **corps JSON (400)**, puis `TaskService::update` qui contrôle l'existence (404) avant la validation (422) (existant, point (b) de la tranche A). Donc `PATCH /tasks/999` avec un corps invalide : 400; avec un JSON valide mais un champ faux : 404. Pour `POST` : corps (400), puis validation (422).
+- Le validateur ne voit que des types JSON : les nombres décimaux (`1.5`) arrivent en `float`, les gros entiers au-delà de `PHP_INT_MAX` en `float` aussi, tous deux refusés par `estimated_minutes_invalid` / `field_type_invalid` selon le champ (comportement existant, tests à écrire).
+- Taille du corps : aucune limite applicative; limites de PHP (`post_max_size`) valables; non vérifié sur AlwaysData.
+
+### Organisation du code (proposé, cohérente avec l'existant)
+
+- `RestAdapter` (existant) : garde le routage par motifs, `id()`, les réponses 404/405 et la conversion unique des erreurs. Ajouts : route exacte `^/api/v1/tasks$` (`GET`, `POST`), `PATCH` sur `/tasks/{id}`, 422 pour `InvalidTask`. Le seul endroit où un statut HTTP est choisi pour une erreur de domaine reste `RestAdapter`. Le corps d'erreur `invalid_json` est produit via `RestAdapter::error()` (existant, public), pas par une exception de domaine : c'est une erreur de transport (le MCP aura la sienne, `-32700`), pas une règle métier partagée.
+- `TaskController` (existant) : gagne `create(Request)`, `list()`, `update(int $id, Request)`. Le décodage JSON du corps y est fait par une méthode privée (ou une petite classe `Rest\JsonBody` si une troisième route en a besoin) qui renvoie un tableau ou la réponse 400. Aucune règle de validation de champ dans l'adaptateur : il ne vérifie que la forme du transport (corps = objet JSON). Les types, longueurs, énumérations restent dans `TaskValidator`, partagés avec MCP et portail.
+- `Request`, `Response`, `Kernel`, `Bootstrap`, `TaskService`, `TaskValidator`, `TaskRepository`, erreurs de domaine : **inchangés**. `Request::$body` et `Response::json` (avec en-têtes) existent déjà; `Response::json(200, [])` produit `[]` (le tableau vide), pas `{}`.
+- Aucune classe de validation de corps séparée, aucun schéma JSON, aucune dépendance.
+
+### Impact (analyse)
+
+- **Schéma : aucun.** Pas de migration. **Dépendances : aucune.** Fonctions PHP : `json_decode` (ext-json, déjà en contrainte).
+- **Consommateurs** : `RestTasksTest::testWrongMethodsGive405WithAllowHeader` (ligne 241) attend `Allow: GET, DELETE` sur `/tasks/{id}` : à mettre à jour en `GET, PATCH, DELETE` (conséquence directe et voulue de l'ajout de `PATCH`, pas une rupture d'API : l'en-tête `Allow` décrit les méthodes permises). Il attend aussi, selon sa ligne 289, `GET` sur `health` : inchangé. `RestTasksTest` ligne 229 attend 404 sur `/api/v1/tasks` (avec trois autres chemins sans route) : `/api/v1/tasks` devient une route, donc ce chemin sort de la liste (les trois autres restent 404).
+- **Rupture** : aucune. Le 405 sur `/tasks/{id}` en `PATCH` devient un succès; aucun client réel (local seulement). MCP et portail non concernés : ils réutiliseront `TaskService` et les mêmes `code` d'erreur.
+- **Sécurité** : toute validation côté serveur (cas d'usage); requêtes préparées (existant); aucune authentification (local `127.0.0.1` seulement, requise avant exposition, élément séparé); les erreurs 500 et 503 ne révèlent ni SQL, ni SQLSTATE, ni nom de table; une valeur invalide n'est jamais répétée dans `message` ni `details` (seul `field` l'est).
+
+### Tests à écrire avant le code (proposé)
+
+Suite d'intégration (PostgreSQL réel, comme `RestTasksTest`; nouvelle classe ou extension de celle-ci) :
+1. `POST` minimal : 201, `Location`, champs facultatifs `null`, `required_actions` `[]`, `created_at` = `updated_at` non vides; `POST` complet : valeurs renvoyées identiques; relecture par `GET /tasks/{id}` identique.
+2. `POST` invalide, un test par code de validation avec `details.field` attendu, dont : titre `"   "`, titre de 256 caractères (et 255 accepté), titre `"  a  "` conservé tel quel, catégorie `"pro"`, `due_date` `2026-02-30`, `estimated_minutes` `0`, `1.5`, `"10"`, `recurrence` sans date butée, `recurrence` à moitié renseignée, `recurrence` en liste JSON (`[]` : `recurrence_incomplete`; `[1,"day"]` : `field_unknown`, `recurrence.0`; dans les deux cas 422 et rien créé), clé inconnue, `id`/`required_actions`/`created_at`/`updated_at` fournis (`field_unknown`); après chaque refus le nombre de tâches est inchangé.
+3. 400 `invalid_json` : corps vide, `{`, `[]`, `"x"`, `null`, `123`; aucune tâche créée; le corps ne contient aucun texte de l'analyseur JSON.
+4. `GET /tasks` : `[]` sur base vide; tri : dates différentes, deux tâches de même date (ordre `id`), tâches sans date après les datées; une chaîne de requête inconnue est ignorée.
+5. `PATCH` : un champ modifié, autres inchangés; `null` efface chacun des quatre champs facultatifs; `{}` : 200 et `updated_at` inchangé; valeurs identiques : idem; modification effective : `updated_at` avance (méthode de `TaskServiceTest` : forcer d'abord `updated_at` dans le passé) et `created_at` inchangé; effacer `due_date` d'une périodique : 422 `recurrence_requires_due_date`, tâche inchangée; clés non modifiables : 422 `field_unknown`, tâche inchangée; id inconnu : 404 `task_not_found` (JSON valide) ; `PATCH` d'une tâche ayant des actions requises ne les modifie pas.
+6. `DELETE` d'un id inconnu : 404 `task_not_found`; deuxième `DELETE` d'une même tâche : 404 (non idempotent).
+7. 405 : `PUT`/`DELETE` sur `/tasks` (`Allow: GET, POST`), `PUT` sur `/tasks/{id}` (`Allow: GET, PATCH, DELETE`).
+8. 500 : dépôt qui lève une `PDOException` (SQLSTATE `XX000`) pendant `POST` : corps `internal_error` sans SQLSTATE ni message; 503 sur connexion refusée.
+9. Parcours bout en bout : `POST` -> `GET` -> `PATCH` -> `GET /tasks` -> `DELETE` -> `GET` 404.
+
+Non vérifiable par ces tests : appel HTTP réel (`php -S` + curl), à faire une fois par le Developer.
+
+### À faire valider avant implémentation
+
+Rien : les quatre points ont été validés le 2026-10-11 (voir les statuts en tête de section). Resserrer `Content-Type` (415) ou traiter les paramètres de requête serait une évolution future, à valider à part.
 
 ## Cycle de vie (tranche B) — décisions validées, **non livrées**
 

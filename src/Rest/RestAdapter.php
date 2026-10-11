@@ -7,6 +7,7 @@ namespace Actions\Rest;
 use Actions\Application\DatabaseUnavailable;
 use Actions\Application\Diagnostic;
 use Actions\Application\DomainError;
+use Actions\Application\InvalidTask;
 use Actions\Http\Request;
 use Actions\Http\Response;
 
@@ -33,7 +34,8 @@ final class RestAdapter
         try {
             return $this->route($request);
         } catch (DomainError $e) {
-            $status = self::DOMAIN_STATUS[$e->code()] ?? null;
+            // Les codes de validation forment une famille ouverte : statut par classe, puis par table.
+            $status = $e instanceof InvalidTask ? 422 : (self::DOMAIN_STATUS[$e->code()] ?? null);
             if ($status === null) {
                 error_log('rest: code de domaine sans statut : ' . $e->code());
 
@@ -70,6 +72,14 @@ final class RestAdapter
             return Response::json(200, $this->diagnostic->health());
         }
 
+        if ($path === '/api/v1/tasks') {
+            return match ($method) {
+                'GET' => $this->tasks->list(),
+                'POST' => $this->tasks->create($request),
+                default => self::methodNotAllowed('GET, POST'),
+            };
+        }
+
         if (preg_match('#^/api/v1/tasks/([^/]+)$#', $path, $m) === 1) {
             $id = self::id($m[1]);
             if ($id === null) {
@@ -78,8 +88,9 @@ final class RestAdapter
 
             return match ($method) {
                 'GET' => $this->tasks->get($id),
+                'PATCH' => $this->tasks->update($id, $request),
                 'DELETE' => $this->tasks->delete($id),
-                default => self::methodNotAllowed('GET, DELETE'),
+                default => self::methodNotAllowed('GET, PATCH, DELETE'),
             };
         }
 
