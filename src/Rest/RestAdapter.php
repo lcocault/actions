@@ -8,6 +8,7 @@ use Actions\Application\DatabaseUnavailable;
 use Actions\Application\Diagnostic;
 use Actions\Application\DomainError;
 use Actions\Http\DomainStatus;
+use Actions\Http\ErrorBody;
 use Actions\Http\PathId;
 use Actions\Http\Request;
 use Actions\Http\Response;
@@ -32,12 +33,8 @@ final class RestAdapter
 
                 return self::internalError();
             }
-            $error = ['code' => $e->code(), 'message' => $e->getMessage()];
-            if ($e->details() !== []) {
-                $error['details'] = $e->details();
-            }
 
-            return Response::json($status, ['error' => $error]);
+            return Response::json($status, ErrorBody::fromDomain($e));
         } catch (DatabaseUnavailable $e) {
             error_log('rest: base injoignable : ' . ($e->getPrevious()?->getMessage() ?? $e->getMessage()));
 
@@ -120,6 +117,6 @@ final class RestAdapter
     /** @param array<string,string> $headers */
     public static function error(int $status, string $code, string $message, array $headers = []): Response
     {
-        return Response::json($status, ['error' => ['code' => $code, 'message' => $message]], $headers);
+        return Response::json($status, ErrorBody::of($code, $message), $headers);
     }
 }

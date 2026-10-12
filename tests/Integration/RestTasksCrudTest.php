@@ -442,7 +442,7 @@ final class RestTasksCrudTest extends DbTestCase
         return new Kernel(
             new \Actions\Portal\PortalAdapter($service, new \Actions\Tests\Support\ArraySession(), ['127.0.0.1']),
             new \Actions\Rest\RestAdapter($diagnostic, new \Actions\Rest\TaskController($service)),
-            new \Actions\Mcp\McpAdapter($diagnostic, []),
+            new \Actions\Mcp\McpAdapter($diagnostic, $service, [], ['127.0.0.1']),
         );
     }
 

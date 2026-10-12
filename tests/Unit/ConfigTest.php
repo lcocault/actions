@@ -24,6 +24,24 @@ final class ConfigTest extends TestCase
         self::assertSame(5432, $c->dbPort);
         self::assertSame([], $c->mcpAllowedOrigins);
         self::assertSame(['127.0.0.1', 'localhost', '[::1]'], $c->portalAllowedHosts);
+        self::assertSame(['127.0.0.1', 'localhost', '[::1]'], $c->mcpAllowedHosts);
+    }
+
+    public function testMcpAllowedHostsAreSplitAndLowercasedAndIndependentOfPortal(): void
+    {
+        $c = Config::fromArray(['DB_NAME' => 'n', 'DB_USER' => 'u', 'MCP_ALLOWED_HOSTS' => ' Actions.Local , ,127.0.0.1']);
+        self::assertSame(['actions.local', '127.0.0.1'], $c->mcpAllowedHosts);
+        self::assertSame(Config::DEFAULT_PORTAL_HOSTS, $c->portalAllowedHosts);
+        $c = Config::fromArray(['DB_NAME' => 'n', 'DB_USER' => 'u', 'PORTAL_ALLOWED_HOSTS' => 'portail.local']);
+        self::assertSame(Config::DEFAULT_PORTAL_HOSTS, $c->mcpAllowedHosts);
+    }
+
+    public function testEmptyMcpAllowedHostsFallBackToDefault(): void
+    {
+        foreach (['', ' , '] as $value) {
+            $c = Config::fromArray(['DB_NAME' => 'n', 'DB_USER' => 'u', 'MCP_ALLOWED_HOSTS' => $value]);
+            self::assertSame(Config::DEFAULT_MCP_HOSTS, $c->mcpAllowedHosts);
+        }
     }
 
     public function testPortalAllowedHostsAreSplitAndLowercased(): void

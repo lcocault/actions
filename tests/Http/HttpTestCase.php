@@ -20,10 +20,25 @@ abstract class HttpTestCase extends TestCase
         return Bootstrap::kernel($config)->handle(new Request($method, $path, array_change_key_case($headers), $body));
     }
 
-    /** @return array<string,mixed> */
-    protected function mcp(array|string $message, array $headers = ['Content-Type' => 'application/json'], array $origins = []): Response
+    /**
+     * Envoie un message à POST /mcp avec `Host: 127.0.0.1:8080` et `Content-Type: application/json` par défaut.
+     * $headers remplace ou ajoute des en-têtes; une valeur null supprime l'en-tête par défaut.
+     *
+     * @param array<string,?string> $headers
+     * @param list<string> $origins
+     */
+    protected function mcp(array|string $message, array $headers = [], array $origins = []): Response
     {
-        return $this->call('POST', '/mcp', $headers, is_string($message) ? $message : json_encode($message), $origins);
+        $merged = ['host' => '127.0.0.1:8080', 'content-type' => 'application/json'];
+        foreach ($headers as $name => $value) {
+            if ($value === null) {
+                unset($merged[strtolower($name)]);
+            } else {
+                $merged[strtolower($name)] = $value;
+            }
+        }
+
+        return $this->call('POST', '/mcp', $merged, is_string($message) ? $message : json_encode($message), $origins);
     }
 
     protected function decode(Response $r): array

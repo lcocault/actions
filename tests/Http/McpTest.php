@@ -42,13 +42,18 @@ final class McpTest extends HttpTestCase
         self::assertSame('', $r->body);
     }
 
-    public function testToolsListExposesOnlyPing(): void
+    public function testToolsListExposesNineToolsInOrder(): void
     {
         $tools = $this->rpc('tools/list')['result']['tools'];
-        self::assertCount(1, $tools);
-        self::assertSame('ping', $tools[0]['name']);
-        self::assertSame('object', $tools[0]['inputSchema']['type']);
-        self::assertFalse($tools[0]['inputSchema']['additionalProperties']);
+        self::assertSame(
+            ['ping', 'create_task', 'get_task', 'list_tasks', 'update_task', 'delete_task', 'add_required_action', 'remove_required_action', 'change_task_status'],
+            array_column($tools, 'name'),
+        );
+        foreach ($tools as $tool) {
+            self::assertNotSame('', trim($tool['description']), $tool['name']);
+            self::assertSame('object', $tool['inputSchema']['type'], $tool['name']);
+            self::assertFalse($tool['inputSchema']['additionalProperties'], $tool['name']);
+        }
     }
 
     public function testPingReturnsFixedResult(): void
@@ -106,7 +111,7 @@ final class McpTest extends HttpTestCase
         $r = $this->mcp('{}', ['Content-Type' => 'text/plain']);
         self::assertSame(415, $r->status);
         self::assertSame(-32600, $this->decode($r)['error']['code']);
-        self::assertSame(415, $this->mcp('{}', [])->status);
+        self::assertSame(415, $this->mcp('{}', ['Content-Type' => null])->status);
     }
 
     public function testContentTypeWithCharsetIsAccepted(): void

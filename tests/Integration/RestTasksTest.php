@@ -305,7 +305,7 @@ final class RestTasksTest extends DbTestCase
         return new Kernel(
             new PortalAdapter($service, new \Actions\Tests\Support\ArraySession(), ['127.0.0.1']),
             new RestAdapter($diagnostic, new TaskController($service)),
-            new McpAdapter($diagnostic, []),
+            new McpAdapter($diagnostic, $service, [], ['127.0.0.1']),
         );
     }
 }

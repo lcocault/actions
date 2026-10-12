@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Actions\Rest;
 
 use Actions\Application\TaskService;
+use Actions\Http\JsonObject;
 use Actions\Http\Request;
 use Actions\Http\Response;
 
@@ -89,22 +90,9 @@ final class TaskController
         if (!$decoded instanceof \stdClass) {
             return null;
         }
-        $data = self::toArray($decoded);
+        $data = JsonObject::toArray($decoded);
 
         return is_array($data) ? $data : null;
-    }
-
-    /** Objets JSON -> tableaux associatifs; les listes JSON restent des listes. */
-    private static function toArray(mixed $value): mixed
-    {
-        if ($value instanceof \stdClass) {
-            $value = get_object_vars($value);
-        }
-        if (is_array($value)) {
-            return array_map(self::toArray(...), $value);
-        }
-
-        return $value;
     }
 
     private static function invalidJson(): Response

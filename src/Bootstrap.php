@@ -19,7 +19,7 @@ use Actions\Rest\TaskController;
 
 final class Bootstrap
 {
-    /** Cas d'usage des tâches (REST et portail l'utilisent; MCP le recevra plus tard). */
+    /** Cas d'usage des tâches (REST, MCP et portail l'utilisent). */
     public static function taskService(Config $config): TaskService
     {
         return new TaskService(new TaskRepository(static fn (): \PDO => Database::connect($config)));
@@ -35,7 +35,7 @@ final class Bootstrap
         return new Kernel(
             new PortalAdapter($tasks, $session ?? new NativeSession($https), $config->portalAllowedHosts),
             new RestAdapter($diagnostic, new TaskController($tasks)),
-            new McpAdapter($diagnostic, $config->mcpAllowedOrigins),
+            new McpAdapter($diagnostic, $tasks, $config->mcpAllowedOrigins, $config->mcpAllowedHosts),
         );
     }
 }

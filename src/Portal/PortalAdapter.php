@@ -9,6 +9,7 @@ use Actions\Application\DomainError;
 use Actions\Application\TaskNotFound;
 use Actions\Application\TaskService;
 use Actions\Http\DomainStatus;
+use Actions\Http\HostGuard;
 use Actions\Http\PathId;
 use Actions\Http\Request;
 use Actions\Http\Response;
@@ -58,7 +59,7 @@ final class PortalAdapter
     private function dispatch(Request $request): Response
     {
         // 1. Host : sans authentification, refuse les noms de domaine inattendus (« DNS rebinding »).
-        $host = self::splitHost($request->header('host'));
+        $host = HostGuard::split($request->header('host'));
         if ($host === null || !in_array($host['name'], $this->allowedHosts, true)) {
             return $this->renderer->error(403, 'Accès refusé', 'Le portail refuse cette adresse d\'accès. Ouvrez-le par http://127.0.0.1 ou http://localhost (avec le même port), ou faites déclarer ce nom d\'hôte par l\'administrateur. Rien n\'a été enregistré.');
         }
@@ -159,38 +160,6 @@ final class PortalAdapter
 
             return new Response(500, ['Content-Type' => 'text/plain; charset=utf-8'], 'Erreur interne.');
         }
-    }
-
-    /** @return ?array{name:string,port:?int} nom d'hôte en minuscules (crochets conservés pour IPv6) et port */
-    private static function splitHost(?string $header): ?array
-    {
-        if ($header === null || $header === '') {
-            return null;
-        }
-        $header = strtolower($header);
-        if ($header[0] === '[') {
-            $end = strpos($header, ']');
-            if ($end === false) {
-                return null;
-            }
-            $name = substr($header, 0, $end + 1);
-            $rest = substr($header, $end + 1);
-        } else {
-            $pos = strpos($header, ':');
-            $name = $pos === false ? $header : substr($header, 0, $pos);
-            $rest = $pos === false ? '' : substr($header, $pos);
-        }
-        if ($name === '' || $name === '[]' || preg_match('/^[a-z0-9.\-\[\]:]+$/', $name) !== 1) {
-            return null;
-        }
-        if ($rest === '') {
-            return ['name' => $name, 'port' => null];
-        }
-        if (preg_match('/^:([0-9]{1,5})$/', $rest, $m) !== 1) {
-            return null;
-        }
-
-        return ['name' => $name, 'port' => (int) $m[1]];
     }
 
     /**

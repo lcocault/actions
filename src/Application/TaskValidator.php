@@ -11,7 +11,8 @@ namespace Actions\Application;
 final class TaskValidator
 {
     private const FIELDS = ['title', 'category', 'due_date', 'recurrence', 'estimated_minutes', 'description'];
-    private const UNITS = ['day', 'week', 'month', 'year'];
+    public const UNITS = ['day', 'week', 'month', 'year'];
+    public const CATEGORIES = ['Pro', 'Perso'];
     private const INT4_MAX = 2147483647;
     private const TITLE_MAX = 255;
 
@@ -165,7 +166,7 @@ final class TaskValidator
         if (!is_string($value)) {
             throw new InvalidTask('field_type_invalid', 'category', 'Type de valeur incorrect.');
         }
-        if ($value !== 'Pro' && $value !== 'Perso') {
+        if (!in_array($value, self::CATEGORIES, true)) {
             throw new InvalidTask('category_invalid', 'category', 'La catégorie doit être Pro ou Perso.');
         }
 

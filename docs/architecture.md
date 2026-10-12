@@ -6,6 +6,8 @@ Légende des statuts : **existant** (dans le dépôt, vérifiable), **proposé**
 
 **Existant** (relu le 2026-10-11) : documentation; squelette (`src/`, `bin/migrate`, `compose.yaml`, `.env.example`, `tests/`, `README.md`); migration `database/migrations/0001_tasks_and_dependencies.sql` (tables `tasks`, `task_dependencies`, trigger anti-cycle) et `tests/Integration/TaskSchemaTest.php`, appliqués en local seulement (rien sur AlwaysData). La couche commune des tâches (tranche A) existe : `TaskService`, `TaskValidator`, `TaskRepository`, six erreurs de domaine, `Bootstrap::taskService()`, `TaskValidatorTest`, `TaskServiceTest`; aucun adaptateur (REST, MCP, portail) ne l'appelle encore, `RestAdapter` ne connaît que `GET /api/v1/health`. La tranche REST « dépendances » (`GET`/`DELETE /tasks/{id}`, liens `PUT`/`DELETE`) existe en local (`TaskController`, `RestAdapter`, `RestTasksTest`); le contrat de `POST`/`GET /tasks` et `PATCH /tasks/{id}` est écrit (section « Tranche CRUD REST »), non implémenté. Relecture de l'Architecte au 2026-10-11 : SQL de 0001, `TaskRepository`, `TaskService`, `RestAdapter`, `Kernel`, `Bootstrap`, `Request`/`Response`, tests `TaskSchemaTest`, `TaskServiceTest` (noms et passages cités) et `RestTest`. Aucun test n'a été rejoué par l'Architecte (pas d'exécution possible dans son rôle) : la vérification reste celle du Developer/PO.
 
+**Relecture MCP de l'Architecte (2026-10-12)** : lus `src/Mcp/McpAdapter.php`, `TaskService`, `TaskController`, `RestAdapter`, `DomainStatus`, `PathId`, `Request`, `Response`, `Config`, `Bootstrap`, `PortalAdapter` (garde `Host`/`Origin`), `TaskStatus`, passages de `TaskValidator`, `tests/Http/McpTest.php` (début) et `HttpTestCase`. **Existant** : le serveur MCP du squelette expose seulement `ping`; `Bootstrap::kernel` ne lui passe pas `TaskService`; REST, portail B1/B2 et états sont livrés en local (voir BACKLOG, non commités). Les sections plus anciennes ci-dessous qui disent « non livré » pour le cycle de vie et le portail décrivent la conception d'origine; le code les a rattrapées. La conception MCP des tâches est dans « Contrat MCP des tâches (tranche MCP M1) ».
+
 ## Décisions validées (tranche « squelette »)
 
 - **Validé** : PHP sans framework + Composer minimal (chaque dépendance justifiée).
@@ -20,6 +22,8 @@ Légende des statuts : **existant** (dans le dépôt, vérifiable), **proposé**
 - **Validé, non livré (tranche B)** : états `À faire` / `En cours` / `Terminée`, transitions, terminaison avec actions requises, occurrence d'une périodique, suppression (décisions explicites); Q1 à Q12 **validées par délégation** (non confirmées explicitement). Conception **proposée** (migration `0002`, erreurs, contrat REST) : voir « Cycle de vie (tranche B) ».
 - **Validé par l'Architecte** (2026-10-11), les deux écarts du Developer par rapport à l'esquisse de 0001 : voir « Schéma des tâches ».
 - **Validé** (utilisateur, 2026-10-11, décisions PW1 à PW12 du backlog, recommandations du Product Owner retenues) : portail local sans authentification, jamais déployé ni exposé avant l'authentification; pages rendues par le serveur PHP appelant `TaskService` (confirmé techniquement par l'Architecte); aucune bibliothèque, CSS maison local, pas de CDN; dates `JJ/MM/AAAA`, horodatages Europe/Paris, durée en minutes; confirmation avant suppression; tâches terminées visibles par défaut avec filtre; message de confirmation avec lien pour `next_occurrence`; dépendances choisies dans une liste, refus des cycles en base; boutons de transition selon l'état, avertissement sans blocage avant réouverture; CSRF par formulaire + session minimale + contrôle d'`Origin` + en-têtes de sécurité + échappement; périodicité « tous les N unité », catégorie sans défaut, titre tel quel; deux tranches B1/B2. La **conception** qui en découle est **proposée** : voir « Portail web (tranches B1 et B2) ».
+
+- **Validé** (utilisateur, 2026-10-12, décisions M1 à M4 du backlog) : MCP des tâches en local sans authentification (l'authentification reste un élément P1 avant toute exposition); huit outils (CRUD, actions requises, états) avec un outil d'état séparé `change_task_status`, `update_task` refusant `status`; suppression exigeant `confirm: true`; mêmes champs et mêmes codes que REST, résultat en texte JSON, erreurs en `isError` avec le même JSON que REST. La **conception** qui en découle (noms d'arguments, schémas, codes propres à MCP, organisation) est **proposée** : voir « Contrat MCP des tâches (tranche MCP M1) ». M5 à M7 : instruites, recommandations **proposées**; M8 : à trancher par l'utilisateur.
 
 Les sections « Contrat REST » et « Contrat MCP » du squelette sont validées et implémentées; les autres sections « (proposé) » ci-dessous couvrant des points de cette liste (migrations, dépendances, PHP) ont le statut de la liste. Restent **proposés** ou **à vérifier** : tous les points « non vérifiés » AlwaysData, la conception du portail (décisions PW1 à PW12 validées, contrat B1/B2 proposé), la procédure de démarrage détaillée, les variables de configuration et la convention de tests (acceptées de fait par le Developer, sans validation explicite de l'utilisateur).
 
@@ -41,7 +45,9 @@ Sources : documentation officielle `help.alwaysdata.com`, pages ouvertes à cett
 | Sessions PHP (cookie de session, fichiers) | **Partiellement vérifié** (2026-10-11) | Le `php.ini` d'exemple (PHP 8.2) de `/en/docs/web-hosting/languages/php/configuration/` contient `session.save_path = /home/<compte>/admin/tmp`, ce qui indique un stockage de sessions par fichiers prévu. L'extension `session` (incluse par défaut dans PHP, non listée par la page), le ramasse-miettes et les réglages de cookie ne sont pas documentés dans ce que l'Architecte a lu : **non vérifié** pour la version cible. |
 | Variables d’environnement pour la configuration | **Non vérifié** | Non couvert par la page de configuration PHP. |
 | Transmission de l’en-tête `Authorization` à PHP (FastCGI) | **Non vérifié** | Sans objet dans cette tranche; à vérifier avant la tranche d’authentification. |
-| Délais maximaux d’exécution/requête | **Non vérifié** | Sans objet pour le squelette (réponses JSON courtes). |
+| Délais maximaux d’exécution/requête | **Non vérifié** | Sans objet pour le squelette (réponses JSON courtes). Le `php.ini` d'exemple (PHP 8.2) fixe `max_execution_time = 120`, `memory_limit = 256M`, `post_max_size = 256M` (page de configuration PHP, relue le 2026-10-12); ce sont des valeurs d'exemple, pas une garantie pour le compte cible. |
+| Extensions `fileinfo`, `ctype` (en plus de celles ci-dessus) | Vérifié pour l'exemple PHP 8.2 (2026-10-12) | même page. Autres versions de PHP non vérifiées. Pertinent seulement pour le SDK MCP (voir M5). |
+| Outils MCP (`POST /mcp`) servis par PHP/Apache, `Host` et `Origin` reçus tels quels | **Non vérifié** | Aucun essai sur un compte; hors périmètre de la tranche MCP M1 (local). À tester au déploiement, avec l'authentification. |
 
 Conséquences : aucun choix du squelette ne dépend d’un point non vérifié, car rien n’est déployé. Le front controller unique (`public/index.php`) fonctionne sans réécriture si l’on accepte des URL de la forme `/index.php/...` en secours; la réécriture reste à confirmer avant déploiement.
 
@@ -123,7 +129,7 @@ Erreurs (HTTP 200 avec objet JSON-RPC `error`, sauf mention) :
 
 Dépend du cas d’usage : `ping` -> `Diagnostic::ping()`. Les futurs outils CRUD appelleront les mêmes cas d’usage que REST.
 
-Alternative écartée : SDK PHP MCP tiers. Non évalué en détail (maturité, dépendances PSR, compatibilité hébergement non vérifiées); le protocole minimal du squelette (4 messages) s’écrit en environ 150 lignes. À réévaluer quand les outils CRUD arriveront.
+Alternative écartée : SDK PHP MCP tiers. Réévaluée le 2026-10-12 pour l'arrivée des outils des tâches : voir « M5 » dans « Contrat MCP des tâches ». Le contrat ci-dessus reste **existant** et sert de base; les ajouts (outils, contrôle `Host`, en-tête de version) sont **proposés** dans la section suivante.
 
 ## Contrat du portail
 
@@ -135,7 +141,8 @@ Alternative écartée : SDK PHP MCP tiers. Non évalué en détail (maturité, d
 - Variables : `APP_ENV` (`local`, `test`, `production`; **défaut `production` si absente**, choix le plus restrictif pour le garde-fou des migrations), `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `MCP_ALLOWED_ORIGINS` (liste séparée par des virgules, vide par défaut), `TEST_DB_NAME` (défaut `actions_test`), `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` (utilisées par `compose.yaml` seulement).
 - État au 2026-10-10 : implémenté par le Developer (existant, relu dans `src/Infrastructure/Config.php`, `compose.yaml`, `.env.example`); le comportement reste à valider par l'utilisateur.
 - `.env.example` fourni, sans secret; `.env` et tout fichier de secrets dans `.gitignore`.
-- **Proposé** (portail) : `PORTAL_ALLOWED_HOSTS` (noms d'hôte sans port, séparés par des virgules; défaut `127.0.0.1,localhost,[::1]`).
+- **Existant** (portail, relu dans `Config`) : `PORTAL_ALLOWED_HOSTS` (noms d'hôte sans port, séparés par des virgules; défaut `127.0.0.1,localhost,[::1]`).
+- **Proposé** (MCP, M7) : `MCP_ALLOWED_HOSTS`, même format et même défaut; variable absente ou vide = défaut. Séparée de la variable du portail pour que l'exposition de chaque interface se décide à part; argument ajouté en dernier à `Config::__construct` (appels existants valides).
 - Le mécanisme de configuration sur AlwaysData (variables d’environnement ou fichier hors racine web) n’est pas vérifié : à trancher à la tranche de déploiement.
 
 ## Données et migrations
@@ -787,6 +794,139 @@ Le portail n'appelle `changeStatus` que pour `POST /tasks/{id}/status` (jamais `
 6. **Extractions `Http\DomainStatus` et `Http\PathId`** dans `RestAdapter` (comportement inchangé).
 7. **PW9, avertissement de réouverture** : valable pour toute périodique terminée, et non « déjà renouvelée » (voir B2); ou filiation par migration (décision produit).
 8. **B2** (après B1) : routes et flash décrits, doublon de lien traité en succès avec information (idempotence validée), pas de `status` ajouté à `required_actions`, réouverture par page de confirmation.
+
+## Contrat MCP des tâches (tranche MCP M1) — conception du 2026-10-12, **non livrée**
+
+Statuts. **Validé** (utilisateur) : M1 à M4 (voir « Décisions validées »). **Existant** : serveur du squelette (`McpAdapter`, transport, `ping`), `TaskService` et ses erreurs, table `DomainStatus`. **Proposé** : tout le reste (noms d'arguments, schémas, résultats non couverts par REST, deux codes propres à MCP, organisation du code, gardes `Host` et version de protocole, M5 à M7), non opposable au Developer avant validation. Aucune migration, aucune dépendance, aucune règle métier nouvelle.
+
+### Principes
+
+- MCP est un quatrième consommateur de `TaskService` (avec REST et portail) : **chaque outil = un appel de cas d'usage + une traduction**. Aucune règle de validation, de transition, de cycle ni de suppression dans `Mcp\`.
+- Transport inchangé (voir « Contrat MCP du squelette ») : `POST /mcp`, sans session, JSON seul, pas de SSE, pas d'authentification (local, `127.0.0.1`).
+- **Succès** : `result` = `{"content":[{"type":"text","text":"<JSON>"}],"isError":false}`; `text` est le JSON compact (mêmes options que `Response::json` : UTF-8 non échappé, `/` non échappé) de la valeur renvoyée par REST pour la même opération. Pas de `structuredContent` ni d'`outputSchema` (M4 option (a); option (b) possible plus tard sans rupture).
+- **Erreur de domaine ou de validation** : `result` = `{"content":[{"type":"text","text":"{\"error\":{\"code\":...,\"message\":...,\"details\":...}}"}],"isError":true}`; le JSON du texte est **octet pour octet celui d'un corps d'erreur REST** (`details` absent s'il est vide). Pas de statut HTTP côté MCP : la réponse HTTP est toujours 200.
+- **Erreur de protocole** (JSON-RPC, inchangé) : outil inconnu, `name` absent, `arguments` présent mais qui n'est pas un objet JSON : `-32602`. Erreur imprévue (dont toute `PDOException`, tout `DomainError` dont le `code` n'est pas dans `DomainStatus`) : `-32603` « Erreur interne. », détail au journal seulement (classe, SQLSTATE d'une `PDOException`, message), comme `RestAdapter`. `DatabaseUnavailable` : résultat `isError` de code `service_unavailable` (message « Service indisponible. »), comme REST 503.
+- Les clés absentes et les `null` gardent le sens de REST : à la création, absent ou `null` = non renseigné; à la modification, absent = inchangé, `null` = effacé pour les champs facultatifs.
+
+### Les neuf outils (huit outils des tâches + `ping`, existant)
+
+Ordre de `tools/list` : déterministe, celui du tableau. Tous les `inputSchema` sont `{"type":"object","properties":{...},"required":[...],"additionalProperties":false}`. Les descriptions sont en français. Les schémas **décrivent** les règles sans les appliquer : le serveur valide toujours lui-même (le client peut ignorer le schéma); un test vérifie que les énumérations des schémas sont celles du domaine (`TaskStatus::codes()`, catégories, unités), pour éviter toute dérive.
+
+Définitions communes : `id` = `{"type":"integer","minimum":1}`. Champs de tâche : `title` string (`maxLength` 255), `category` `enum ["Pro","Perso"]`, `due_date` `["string","null"]` (`format: date`, `AAAA-MM-JJ`), `recurrence` `["object","null"]` (`interval` integer `minimum` 1, `unit` `enum ["day","week","month","year"]`, les deux obligatoires, `additionalProperties: false`), `estimated_minutes` `["integer","null"]` (`minimum` 1, en minutes), `description` `["string","null"]`.
+
+| Outil | Arguments (obligatoires en gras) | Cas d'usage appelé | Valeur du texte JSON | Annotations |
+|---|---|---|---|---|
+| `create_task` | **`title`**, **`category`**, `due_date`, `recurrence`, `estimated_minutes`, `description` | `create(args)` | `Task` créée (comme le corps du 201) | — |
+| `get_task` | **`id`** | `get(id)` | `Task` | `readOnlyHint` |
+| `list_tasks` | `status` (`todo`/`in_progress`/`done`), `category` | `list(args)` | tableau de `Task` (`[]` si aucune), ordre du cas d'usage | `readOnlyHint` |
+| `update_task` | **`id`**, puis tout champ de `create_task` (sauf obligation) | `update(id, args sans id)` | `Task` à jour | — |
+| `delete_task` | **`id`**, **`confirm`** (`{"type":"boolean","const":true}`) | `delete(id)` | `{"deleted":true,"id":N}` | `destructiveHint` |
+| `add_required_action` | **`id`**, **`required_task_id`** | `addRequiredAction(id, required_task_id)` | `Task` de `id` | `idempotentHint` |
+| `remove_required_action` | **`id`**, **`required_task_id`** | `removeRequiredAction(id, required_task_id)` | `Task` de `id` | `idempotentHint` |
+| `change_task_status` | **`id`**, **`status`** (énumération des trois codes) | `changeStatus(id, status)` | `Task` à plat plus `next_occurrence` (`Task` ou `null`, **toujours présente** ici car l'outil change toujours l'état) | — |
+
+Précisions de contrat :
+- **`update_task` appelle `TaskService::update`, jamais `patch`** : `patch` aiguille `status` vers `changeStatus`, ce qui ferait d'`update_task` un second outil d'état. Avec `update`, `status` (comme `id` dans `create_task`, `required_actions`, `created_at`, `updated_at`) est `field_unknown` avec `details.field` : **confirmé** (clé hors de la liste fermée du validateur, vérifié par lecture de `TaskValidator::FIELDS`). La description d'`update_task` dit d'utiliser `change_task_status` pour l'état. `update_task` avec le seul `id` est un no-op valide (la tâche est renvoyée, `updated_at` inchangé).
+- **`list_tasks`** : les arguments sont transmis tels quels à `list`, qui refuse une clé inconnue (`field_unknown`), un non-chaîne (`field_type_invalid`) et une valeur hors liste (`status_invalid`/`category_invalid`), toujours avec `details.field`. `status: null` est donc refusé (REST refuse aussi la valeur vide). Pas de pagination (M6, plus bas).
+- **`change_task_status`** : `status` absent est transmis comme `null` (réponse `field_type_invalid`, comme le portail). Même état ou transition interdite : `status_transition_invalid`; prérequis : `required_actions_not_done` (avec la liste); dépassement de date : `next_due_date_out_of_range`. Aucune règle de transition dans l'adaptateur : le schéma ne liste que les trois codes.
+- **`delete_task`** : sans `confirm` strictement `true` (absent, `false`, chaîne, nombre) : erreur `confirmation_required`, **avant tout accès à la base** (tâche intacte, même si l'`id` est inconnu). Puis `delete` : `task_not_found` (404 REST), `task_is_required` avec `dependents`. La description du schéma dit : destructif et sans retour; demander l'accord de l'utilisateur avant d'appeler. **Limite à connaître (à valider)** : `confirm: true` est un booléen produit par le modèle; il protège d'un appel accidentel, pas d'un appel délibéré ou induit par un texte hostile présent dans une tâche (un titre ou une description sont renvoyés au modèle comme données). La vraie confirmation humaine dépend de l'invite d'approbation d'outil du client; l'annotation `destructiveHint` l'y aide (les annotations ne sont pas fiables par nature selon la spécification, consultée le 2026-10-12).
+- **Résultat de suppression** `{"deleted":true,"id":N}` : seule forme sans équivalent REST (REST répond 204 sans corps); proposée.
+- **Identifiants** : `id` et `required_task_id` doivent être des entiers JSON positifs (`is_int`, donc `1.0`, `"5"`, `0`, `-1` et les nombres hors `int` PHP, décodés en `float`, sont refusés). Pas de `PathId` (il prend une chaîne).
+
+### Codes d'erreur propres à MCP (proposé)
+
+Erreurs de **forme de l'appel**, que `TaskService` ne peut pas voir. Mêmes principes que `invalid_json` pour REST (erreur de transport, pas une règle métier) :
+
+| `code` | Quand | `details` | Message (français) |
+|---|---|---|---|
+| `argument_invalid` | `id` ou `required_task_id` absent ou qui n'est pas un entier positif | `{field}` | « L'identifiant doit être un entier positif. » |
+| `confirmation_required` | `delete_task` sans `confirm: true` | `{field: "confirm"}` | « Suppression non confirmée : renvoyez confirm: true après l'accord de l'utilisateur. » |
+| `field_unknown` (**existant**, réutilisé) | clé inconnue dans les outils dont les arguments ne vont pas jusqu'au service (`get_task`, `delete_task`, `add_required_action`, `remove_required_action`, `change_task_status`) | `{field}` | « Champ inconnu. » |
+
+Pour `create_task`, `update_task` et `list_tasks`, les clés inconnues sont refusées par le service (même `code`, même `details`) : l'adaptateur ne contrôle les clés que là où il garde des arguments fixes. Ordre des contrôles d'un appel : outil connu (`-32602`) -> `arguments` objet (`-32602`) -> clés inconnues propres à l'adaptateur (`field_unknown`) -> forme des identifiants (`argument_invalid`) -> confirmation (`confirmation_required`) -> cas d'usage (erreurs de domaine). Tous les autres codes sont ceux du tableau « Erreurs de domaine » et de « Codes de validation » (REST) : `title_blank`, `title_too_long`, `text_invalid`, `category_invalid`, `due_date_invalid`, `recurrence_*`, `estimated_minutes_invalid`, `field_type_invalid`, `field_unknown`, `status_invalid`, `task_not_found`, `required_task_not_found`, `dependency_self`, `dependency_cycle`, `task_is_required`, `status_transition_invalid`, `required_actions_not_done`, `next_due_date_out_of_range`, `service_unavailable`. Pas de `status_not_alone` possible par MCP (aucun outil n'appelle `patch`).
+
+### Organisation du code (proposé)
+
+```
+src/Mcp/
+  McpAdapter.php     Protocole : gardes HTTP, JSON-RPC, initialize, tools/list, aiguillage tools/call, conversion des exceptions
+  TaskTools.php      Les huit définitions (nom, description, inputSchema, annotations) et leur appel de TaskService
+  ToolArguments.php  Forme des arguments seulement : arguments -> tableau PHP, clés inconnues, identifiants, confirm
+src/Http/
+  ErrorBody.php      NOUVEAU (extrait de RestAdapter) : DomainError -> {"error":{code,message,details?}} et assembleur par code/message/details
+  JsonObject.php     NOUVEAU (extrait de TaskController::toArray) : stdClass -> tableaux associatifs (listes conservées)
+  HostGuard.php      NOUVEAU (extrait de PortalAdapter::splitHost) : analyse de l'en-tête Host et contrôle contre une liste de noms
+```
+
+- `McpAdapter` garde le contrôle du protocole et reçoit `TaskService` et `list<string> $allowedHosts` (constructeur : `Diagnostic`, `TaskService`, `allowedOrigins`, `allowedHosts`). Il ne contient aucun nom de champ de tâche. `TaskTools` expose `definitions(): list<array>` et `call(string $name, array $arguments): array` (valeur à encoder); les exceptions de `TaskService` remontent à `McpAdapter`, **seul endroit** qui les transforme en `isError` ou `-32603` (comme `RestAdapter` pour HTTP).
+- **Extractions sans changement de comportement** (suites REST et portail rejouées telles quelles) : `ErrorBody` pour que REST et MCP produisent le même JSON d'erreur au même endroit (sinon la règle « même JSON » serait tenue par deux copies); `JsonObject` pour ne pas recopier la conversion `stdClass` -> tableau (`TaskController::toArray`); `HostGuard` pour partager l'analyse de `Host` avec le portail (qui garde la comparaison de port d'`Origin`). Alternative écartée : décoder le message en `assoc=true` (perd la distinction objet/liste, dont dépendent `arguments` et `recurrence`).
+- `TaskValidator` : rendre publiques les constantes `UNITS` et ajouter `CATEGORIES` (la valeur `Pro`/`Perso` y est aujourd'hui codée en dur) pour que les schémas en dérivent. Changement sans effet de comportement.
+- `Bootstrap::kernel` : passe `taskService` et `$config->mcpAllowedHosts` à `McpAdapter`. `Kernel`, `Request`, `Response`, `TaskService`, dépôt, schéma : **inchangés**.
+- `McpAdapter::VERSION` : passer à `0.2.0` (`serverInfo`), cosmétique.
+
+### Gardes HTTP du transport (M7 et version de protocole)
+
+Ordre proposé : méthode (405, existant) -> **`Host` (403, nouveau)** -> `Origin` (403, existant) -> `Content-Type` (415) -> taille -> JSON -> forme JSON-RPC -> **version de protocole (400, nouveau)**. Garder la méthode avant `Host` laisse le contrôle `GET`/`DELETE` -> 405 inchangé.
+
+**M7 — contrôle de `Host` [recommandation : oui].** Contexte : le contrôle d'`Origin` existant refuse tout `Origin` absent de `MCP_ALLOWED_ORIGINS` (vide par défaut, donc tout navigateur est refusé) et accepte l'absence d'`Origin` (clients non navigateur, dont Claude Code). Un « rebond DNS » fait atteindre `127.0.0.1` par une page tierce sous un nom de domaine contrôlé par l'attaquant; la spécification MCP impose de valider `Origin` (403 si présent et invalide; textes des révisions 2025-06-18 et 2026-07-28 consultés le 2026-10-12) et conseille de lier le serveur à `127.0.0.1` et d'authentifier. `Host` est le second verrou : un navigateur ne peut pas lui faire porter `127.0.0.1` pendant que la page vient de `attaquant.example`. Coût : environ 10 lignes (extraction `HostGuard`), une variable `MCP_ALLOWED_HOSTS`; le portail applique déjà la même garde. Effet de bord : un client qui joint le serveur par un autre nom (alias, machine distante) reçoit 403 tant que le nom n'est pas déclaré; `Host` absent : 403 (comme le portail). Protection non absolue (sans authentification, tout processus local ou tout client qui forge `Host` reste admis). Impact tests : `HttpTestCase::mcp()` doit envoyer `Host: 127.0.0.1:8080`; test de 403 pour `Host` étranger, absent, mal formé; `GET /mcp` reste 405 sans `Host`. Alternative écartée : ne rien ajouter (le contrôle d'`Origin` suffit contre les navigateurs conformes); non retenue car la garde existe déjà côté portail et coûte peu.
+
+**En-tête `MCP-Protocol-Version` (constat de l'Architecte, à valider).** La spécification 2025-06-18 impose `400` si la valeur est invalide ou non supportée; l'adaptateur actuel ignore l'en-tête. Révision courante au 2026-10-12 : **2026-07-28** (sans `initialize` ni sessions; chaque requête porte `MCP-Protocol-Version` et `_meta`), distincte des deux versions que le serveur accepte (`2025-06-18`, `2025-03-26`). Un client moderne peut tenter d'abord une requête « moderne » et, selon la spécification, se replier sur `initialize` si la réponse est un `400` dont le corps n'est pas une erreur moderne reconnue. Proposé : si l'en-tête est présent et hors des versions supportées, répondre `400` avec une erreur JSON-RPC `-32600` « Version de protocole non supportée. » ; **exception** : la méthode `initialize` n'est jamais refusée pour cet en-tête (la négociation passe par `protocolVersion` du corps; un client peut y mettre sa version la plus récente). En-tête absent : accepté (traité comme `2025-03-26`). Sans cette garde, un client moderne recevrait un résultat sans `resultType` et pourrait mal l'interpréter. **Non vérifié** : le comportement réel de Claude Code (dont son repli) face à ce `400`; à observer lors de la vérification M8. Support de la révision 2026-07-28 : hors tranche (voir « À valider »).
+
+### M5 — étendre le serveur existant ou adopter un SDK PHP [recommandation : (a) étendre]
+
+Faits (consultés le 2026-10-12) : SDK officiel `mcp/sdk` (dépôt `modelcontextprotocol/php-sdk`, Apache-2.0 pour les nouvelles contributions, MIT pour l'existant; maintenu avec la PHP Foundation et le projet Symfony); le README le dit **expérimental « jusqu'à la première version majeure »**; il annonce les révisions `initialize` et `2026-07-28`; transports STDIO et HTTP (détail de l'HTTP non lu; la page de releases ne montrait aucune version : date de dernière version inconnue). Son `composer.json` demande PHP `^8.1`, `ext-fileinfo` et **16 paquets directs** (`opis/json-schema`, `php-http/discovery`, `phpdocumentor/reflection-docblock`, `symfony/uid`, `symfony/deprecation-contracts`, et `psr/clock`, `container`, `event-dispatcher`, `http-client`, `http-factory`, `http-message`, `http-server-handler`, `http-server-middleware`, `log`), sans compter les dépendances transitives (non comptées). Une implémentation PSR-7 est probablement nécessaire à l'exécution pour l'HTTP (son `require-dev` en contient une; **non vérifié** en production).
+
+| | (a) étendre `McpAdapter` | (b) SDK `mcp/sdk` |
+|---|---|---|
+| Dépendances d'exécution | 0 (décision validée du squelette) | 16 directes + transitives + éventuelle PSR-7 |
+| Code à écrire | environ 250 lignes (`TaskTools`, `ToolArguments`, aiguillage), le protocole existe déjà (137 lignes) | déclaration des outils, pont `Request`/`Response` <-> PSR-7, remplacement des erreurs du SDK par le format M4 |
+| Format d'erreur M4 (même JSON que REST, `isError`, `-32602` limité) | tenu directement | à surcharger : le SDK valide lui-même les arguments contre le schéma et produit ses propres erreurs (comportement **non lu**, risque de conflit avec M4) |
+| Suivi des révisions de protocole | à notre charge (2026-07-28 non supportée) | pris en charge par le SDK (selon son README) |
+| Stabilité de l'API | maîtrisée | expérimentale : ruptures possibles avant la 1.0 |
+| AlwaysData | rien de nouveau | Composer disponible (vérifié le 2026-10-10); `fileinfo` activé dans l'exemple PHP 8.2 (2026-10-12); autres versions de PHP et chaîne PSR : non vérifiés |
+
+Recommandation : **(a)**. Le besoin tient en huit outils JSON sans état; le SDK ajoute une surface de dépendances et d'API instable pour des fonctions que nous n'utilisons pas (SSE, sessions, ressources, prompts), et menace la règle « même JSON que REST ». **À réévaluer** quand on voudra la révision 2026-07-28 ou l'authentification OAuth (décision qui revient alors à l'utilisateur, avec les vérifications AlwaysData). Décision de dépendance : à valider par l'utilisateur.
+
+### M6 — `list_tasks` sans pagination [recommandation : (a) aucun plafond]
+
+Cohérent avec REST validé. Ordre de grandeur (**estimation non mesurée** de l'Architecte : une `Task` sérialisée fait environ 400 à 600 caractères, soit de l'ordre de 100 à 150 jetons) : Claude Code avertit au-delà de 10 000 jetons de sortie d'outil MCP et plafonne par défaut à 25 000 (variable `MAX_MCP_OUTPUT_TOKENS`); les textes de plus de 50 000 caractères sont écrits dans un fichier (documentation `code.claude.com/docs/en/mcp`, consultée le 2026-10-12; autres clients non vérifiés). Soit environ 70 à 100 tâches pour l'avertissement. Les tâches terminées s'accumulent (aucune purge, une occurrence est créée à chaque terminaison périodique) : le seuil peut être atteint en quelques mois d'usage intensif. Mitigations sans changer le contrat : filtres `status`/`category` existants, et description de l'outil qui recommande `status` (par exemple `todo`). Évolution compatible prévue si le seuil approche : arguments facultatifs `limit` / `due_before` (ajout, valeur par défaut inchangée). À valider par l'utilisateur (risque accepté : une réponse trop grande est tronquée ou refusée par le client, sans perte de données côté serveur).
+
+### Impact
+
+- **Interfaces** : MCP gagne huit outils et deux gardes (`Host`, version de protocole); `ping` et le transport sont inchangés. REST et portail : aucun changement de contrat; refactorisations internes (`ErrorBody`, `JsonObject`, `HostGuard`) sans effet visible. **Données** : aucune migration, aucune modification de schéma. **Dépendances** : aucune (sous réserve de M5).
+- **Consommateurs et tests touchés** : `McpTest::testToolsListExposesOnlyPing` (devient neuf outils); `HttpTestCase::mcp()` (en-tête `Host`); `ConfigTest` et `.env.example` (variable `MCP_ALLOWED_HOSTS`); `README.md` (déclaration du serveur dans un client); tests REST et portail rejoués sans modification (extractions). Les clients MCP existants : aucun hors tests.
+- **Sécurité** : validation côté serveur par `TaskService` (requêtes préparées); aucune authentification (local; à ne pas exposer, élément P1); `Host` + `Origin`; corps limité à 1 MiB (existant); erreurs sans SQL, SQLSTATE, trace ni valeur saisie (`details` ne porte que `field`, identifiants, listes de tâches); pas de limitation de débit (non demandée, local). Les données de tâches sont du texte libre renvoyé au modèle : risque d'injection de consigne à signaler à l'utilisateur (voir `delete_task`). Configuration : `MCP_ALLOWED_ORIGINS`, `MCP_ALLOWED_HOSTS`, hors dépôt pour toute valeur sensible (aucun secret ici).
+- **Hébergement** : sans objet en local; rien n'est supposé sur AlwaysData (voir tableau).
+
+### Tests à écrire avant le code (proposé)
+
+Suite `tests/Integration/McpTasksTest` (PostgreSQL réel, `Bootstrap::kernel` et `Kernel::handle`, comme `RestTasksCrudTest`), plus des tests sans base pour `ToolArguments` et les schémas :
+1. `tools/list` : neuf outils dans l'ordre, noms, `required`, `additionalProperties: false`, énumérations égales à `TaskStatus::codes()`, catégories, unités; annotations.
+2. Un test de succès par outil (forme du texte JSON = corps REST de la même opération, comparé après décodage), dont `create_task` minimal et complet, `list_tasks` vide (`[]`), tri, filtres seuls et combinés, `update_task` (champ modifié, `null` efface, absent inchangé, `id` seul no-op), `add`/`remove` idempotents (`updated_at` inchangé au second appel), `change_task_status` (transitions permises, terminaison d'une périodique : `next_occurrence` 31/01 -> 28/02, non périodique : `null`).
+3. **Parité** : pour chaque règle refusée par REST (un cas par `code` du tableau ci-dessus), même `code`, même `details`, texte JSON identique au corps REST; tâche et `updated_at` inchangés; `isError: true`, réponse HTTP 200.
+4. `update_task` avec `status` : `field_unknown`, `details.field = status`, état inchangé; `create_task` avec `id`, `required_actions` : `field_unknown`.
+5. `delete_task` : sans `confirm`, `false`, `"true"`, `1` : `confirmation_required`, tâche intacte, y compris pour un `id` inconnu; `confirm: true` : tâche requise -> `task_is_required` avec `dependents`, tâche intacte; non requise -> `{"deleted":true,"id":N}` puis `get_task` -> `task_not_found`; deuxième suppression -> `task_not_found`.
+6. Cycles A->B->A et A->B->C->A, auto-lien, action requise inconnue, tâche inconnue : codes REST, aucun lien créé.
+7. Forme des appels : `id` absent, `0`, `-1`, `"5"`, `1.0`, `99999999999999999999` : `argument_invalid`; clé inconnue sur `get_task` : `field_unknown`; `arguments` en liste, chaîne, `null` : `-32602`; outil inconnu : `-32602`; `arguments` absent pour un outil sans champ obligatoire : accepté.
+8. Gardes : `Host` hors liste, absent, mal formé : 403 et aucun cas d'usage appelé; `GET /mcp` sans `Host` : 405; `MCP-Protocol-Version` `2026-07-28` ou `1999-01-01` sur `tools/list` : 400; sur `initialize` : accepté; absent ou `2025-06-18` : accepté.
+9. 500/503 : dépôt qui lève une `PDOException` `XX000` : `-32603` « Erreur interne. » sans SQLSTATE ni message; base injoignable : `isError` `service_unavailable`.
+10. Parcours HTTP réel (`php -S 127.0.0.1:8080 -t public public/index.php` + `curl`) : `initialize`, `tools/list`, créer, lire, modifier, terminer, supprimer avec `confirm`. Non vérifiable par les tests : comportement d'un vrai client (M8).
+
+### Vérification avec un client réel (M8, à trancher par l'utilisateur)
+
+Source : documentation Claude Code (consultée le 2026-10-12) : déclaration d'un serveur HTTP par `claude mcp add --transport http <nom> <url>` ou par un fichier `.mcp.json` `{"mcpServers":{"actions":{"type":"http","url":"http://127.0.0.1:8080/mcp"}}}` (une entrée avec `url` sans `type` est traitée comme stdio et échoue). Que Claude Code accepte une URL `http://127.0.0.1` pour un serveur MCP n'est **pas dit explicitement** par la page : à tester. L'application Claude et claude.ai : hors de portée tant que le serveur n'est pas public (hypothèse non vérifiée : URL HTTPS publique requise).
+
+### À faire valider avant implémentation (MCP M1)
+
+1. Les neuf outils, leurs noms et arguments (dont `required_task_id` plutôt que `required_id`/`requiredId`), le résultat de `delete_task` (`{"deleted":true,"id":N}`), les annotations.
+2. Deux codes propres à MCP : `argument_invalid` et `confirmation_required`; réutilisation de `field_unknown`.
+3. **M5** : étendre `McpAdapter` sans dépendance (recommandé) plutôt que `mcp/sdk`.
+4. **M6** : aucun plafond ni pagination, risque de taille accepté; filtres et description comme mitigation.
+5. **M7** : contrôle de `Host` et variable `MCP_ALLOWED_HOSTS`.
+6. Garde `MCP-Protocol-Version` (400 hors versions supportées, `initialize` exempté) : à valider et à confirmer avec un vrai client; support de la révision 2026-07-28 : décision produit/technique distincte, non engagée.
+7. Limite de `confirm: true` (voir `delete_task`) acceptée, ou confirmation humaine renforcée plus tard.
+8. Extractions `ErrorBody`, `JsonObject`, `HostGuard` et constantes publiques de `TaskValidator` (refactorisations sans changement de comportement).
+9. **M8** : quel client valide « utilisable depuis Claude » (Claude Code local suggéré).
 
 ## Dépendances Composer (proposé)
 
