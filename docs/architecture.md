@@ -25,6 +25,8 @@ Légende des statuts : **existant** (dans le dépôt, vérifiable), **proposé**
 
 - **Validé** (utilisateur, 2026-10-12, décisions M1 à M4 du backlog) : MCP des tâches en local sans authentification (l'authentification reste un élément P1 avant toute exposition); huit outils (CRUD, actions requises, états) avec un outil d'état séparé `change_task_status`, `update_task` refusant `status`; suppression exigeant `confirm: true`; mêmes champs et mêmes codes que REST, résultat en texte JSON, erreurs en `isError` avec le même JSON que REST. La **conception** qui en découle (noms d'arguments, schémas, codes propres à MCP, organisation) est **proposée** : voir « Contrat MCP des tâches (tranche MCP M1) ». M5 à M7 : instruites, recommandations **proposées**; M8 : à trancher par l'utilisateur.
 
+- **Validé** (utilisateur, 2026-10-12) : servir l'application sous le préfixe `/actions` (`http://cocault.alwaysdata.net/actions/`) en gérant le préfixe dans le code (et non par un sous-domaine). La conception a été soumise puis approuvée par l'utilisateur (« Tu peux soumettre au développeur », 2026-10-12), et **implémentée** en local (**existant**) : voir « Préfixe d'URL (`APP_BASE_PATH`) ». Rien n'est vérifié sur AlwaysData.
+
 Les sections « Contrat REST » et « Contrat MCP » du squelette sont validées et implémentées; les autres sections « (proposé) » ci-dessous couvrant des points de cette liste (migrations, dépendances, PHP) ont le statut de la liste. Restent **proposés** ou **à vérifier** : tous les points « non vérifiés » AlwaysData, la conception du portail (décisions PW1 à PW12 validées, contrat B1/B2 proposé), la procédure de démarrage détaillée, les variables de configuration et la convention de tests (acceptées de fait par le Developer, sans validation explicite de l'utilisateur).
 
 ## Prérequis AlwaysData (vérifiés le 2026-10-10)
@@ -47,6 +49,7 @@ Sources : documentation officielle `help.alwaysdata.com`, pages ouvertes à cett
 | Transmission de l’en-tête `Authorization` à PHP (FastCGI) | **Non vérifié** | Sans objet dans cette tranche; à vérifier avant la tranche d’authentification. |
 | Délais maximaux d’exécution/requête | **Non vérifié** | Sans objet pour le squelette (réponses JSON courtes). Le `php.ini` d'exemple (PHP 8.2) fixe `max_execution_time = 120`, `memory_limit = 256M`, `post_max_size = 256M` (page de configuration PHP, relue le 2026-10-12); ce sont des valeurs d'exemple, pas une garantie pour le compte cible. |
 | Extensions `fileinfo`, `ctype` (en plus de celles ci-dessus) | Vérifié pour l'exemple PHP 8.2 (2026-10-12) | même page. Autres versions de PHP non vérifiées. Pertinent seulement pour le SDK MCP (voir M5). |
+| Site sous un préfixe d'URL (`cocault.alwaysdata.net/actions`) : correspondance préfixe/racine `public/`, `RewriteBase`, `Host` et HTTPS vus par PHP | **Partiellement vérifié** (2026-10-12) | La documentation Marketplace (`/en/docs/development/marketplace/build-application-script/`) montre qu'une adresse peut porter un chemin (`foo.example.net/test`, « site root (base URL) ») mais ne dit pas comment le chemin correspond au dossier racine. Le reste : **non vérifié**; voir « Préfixe d'URL ». |
 | Outils MCP (`POST /mcp`) servis par PHP/Apache, `Host` et `Origin` reçus tels quels | **Non vérifié** | Aucun essai sur un compte; hors périmètre de la tranche MCP M1 (local). À tester au déploiement, avec l'authentification. |
 
 Conséquences : aucun choix du squelette ne dépend d’un point non vérifié, car rien n’est déployé. Le front controller unique (`public/index.php`) fonctionne sans réécriture si l’on accepte des URL de la forme `/index.php/...` en secours; la réécriture reste à confirmer avant déploiement.
@@ -143,6 +146,7 @@ Alternative écartée : SDK PHP MCP tiers. Réévaluée le 2026-10-12 pour l'arr
 - `.env.example` fourni, sans secret; `.env` et tout fichier de secrets dans `.gitignore`.
 - **Existant** (portail, relu dans `Config`) : `PORTAL_ALLOWED_HOSTS` (noms d'hôte sans port, séparés par des virgules; défaut `127.0.0.1,localhost,[::1]`).
 - **Proposé** (MCP, M7) : `MCP_ALLOWED_HOSTS`, même format et même défaut; variable absente ou vide = défaut. Séparée de la variable du portail pour que l'exposition de chaque interface se décide à part; argument ajouté en dernier à `Config::__construct` (appels existants valides).
+- **Existant** (préfixe d'URL, relu dans `Config` et `.env.example`) : `APP_BASE_PATH`, vide par défaut = aucun préfixe; format et validation dans « Préfixe d'URL ».
 - Le mécanisme de configuration sur AlwaysData (variables d’environnement ou fichier hors racine web) n’est pas vérifié : à trancher à la tranche de déploiement.
 
 ## Données et migrations
@@ -634,7 +638,7 @@ Statuts. **Validé** : PW1 à PW12 (voir « Décisions validées »). **Proposé
 - **Jeton CSRF** : un jeton par session, inséré dans chaque formulaire `POST` (champ `_csrf`), comparé par `hash_equals`. Non à usage unique : l'usage unique casserait « retour arrière », deux onglets et le réaffichage d'un formulaire après erreur. « Par formulaire » (PW10) = chaque formulaire en porte un.
 - **Tests de la session** : interface `Portal\Session` (`csrfToken()`, `flash(array)`, `pullFlash()`, `close()`) et deux implémentations : `NativeSession` (production) et `ArraySession` (tests, sans en-tête ni cookie). Deux implémentations justifient l'interface : sans elle les tests HTTP dépendraient de `session_start()` et des en-têtes.
 - **Fichiers statiques** : une feuille `public/assets/portal.css`, sans JavaScript (PW3 : « JavaScript minimal facultatif » : aucun dans B1/B2; chaque besoin futur sera à justifier). Le serveur de développement `php -S ... public/index.php` ne sert pas les fichiers existants si le routeur ne le demande pas : `public/index.php` gagne, en tête, `if (PHP_SAPI === 'cli-server' && str_starts_with($path, '/assets/') && is_file(__DIR__ . $path)) { return false; }` (`$path` = chemin décodé de l'URL, sans `..`). Sur AlwaysData (Apache) le fichier existant est servi directement si la règle de réécriture exclut les fichiers existants (`!-f`) : **non vérifié**.
-- **URL et préfixe** : tous les liens et actions de formulaire sont produits par un seul assistant `$url('/tasks/12')`, pour pouvoir préfixer plus tard (`/index.php` si la réécriture est indisponible sur AlwaysData). Non conçu davantage (tranche de déploiement).
+- **URL et préfixe** : tous les liens et actions de formulaire sont produits par un seul assistant `$url('/tasks/12')`, pour pouvoir préfixer plus tard (`/index.php` si la réécriture est indisponible sur AlwaysData). Non conçu davantage (tranche de déploiement). **Mise à jour 2026-10-12** : le préfixe est désormais conçu (`APP_BASE_PATH`, voir « Préfixe d'URL ») et `View` en porte déjà le paramètre `$prefix` (existant).
 
 ### Organisation du code (proposé)
 
@@ -927,6 +931,89 @@ Source : documentation Claude Code (consultée le 2026-10-12) : déclaration d'u
 7. Limite de `confirm: true` (voir `delete_task`) acceptée, ou confirmation humaine renforcée plus tard.
 8. Extractions `ErrorBody`, `JsonObject`, `HostGuard` et constantes publiques de `TaskValidator` (refactorisations sans changement de comportement).
 9. **M8** : quel client valide « utilisable depuis Claude » (Claude Code local suggéré).
+
+## Préfixe d'URL (`APP_BASE_PATH`) — conception du 2026-10-12, **livrée en local**
+
+Statuts. **Validé** (utilisateur, 2026-10-12) : servir l'application sous un préfixe (`http://cocault.alwaysdata.net/actions/`) en le gérant dans le code, plutôt que par un sous-domaine; conception approuvée (« Tu peux soumettre au développeur », 2026-10-12). **Existant** : implémentation relue par l'Architecte le 2026-10-12 (`Config`, `Kernel`, `Request::withPath`, `Bootstrap`, `NativeSession`, `TaskController`, `.env.example`, `README.md`, `BasePathTest`, `BasePathTasksTest`). Le Developer rapporte 595 tests OK dans Docker et un appel réel `php -S` sous `/actions` OK (non rejoués par l'Architecte). **Non vérifié** : tout ce qui concerne AlwaysData. Aucune migration, aucune dépendance, aucun changement de schéma. Les sous-sections ci-dessous gardent la rédaction de la conception; chacune est désormais **existante**, sauf mention contraire.
+
+Écarts et ajouts du Developer, **existants** : (1) `NativeSession::options()` est **publique** (elle était à extraire, au choix du Developer) pour tester `cookie_path` sans processus séparé; (2) `tests/Integration/BasePathTasksTest` (PostgreSQL réel) vérifie les `Location` REST et portail et les liens des pages de données sous préfixe; (3) `public/index.php` n'est **pas modifié** (voir limite acceptée ci-dessous).
+
+**Limite acceptée** : avec `php -S` et un préfixe, `/actions/assets/portal.css` n'est pas servie (le test `/assets/` de `public/index.php` ne s'applique que sans préfixe); pages et API restent utilisables, sans style. Documentée dans le README. Équivaut à l'option « sans fichiers statiques » du point 6.
+
+### Existant avant l'implémentation (relu le 2026-10-12)
+
+- `Kernel::handle` compare `$request->path` à des chemins en dur (`/`, `/tasks`, `/mcp`, `/api/v1`) : un chemin `/actions/...` tombe sur le 404 JSON final. `Request::fromGlobals` prend le chemin de `REQUEST_URI` tel quel.
+- Le portail est déjà prêt côté gabarits : toutes les URL des vues passent par `$url()` et toutes les redirections par `Renderer::redirect` -> `View::path()`; `View` accepte déjà un argument `$prefix` (défaut `''`), mais `PortalAdapter` construit `new View()` sans le renseigner. Aucune URL en dur n'a été trouvée dans les gabarits ni dans `TaskPages` en dehors de ces deux assistants.
+- Hors des assistants : `TaskController::create` écrit `Location: /api/v1/tasks/{id}` en dur; `NativeSession` ne fixe pas `cookie_path` (défaut PHP : `/`); `public/index.php` teste `str_starts_with($urlPath, '/assets/')` pour le serveur de développement; `public/.htaccess` : `RewriteRule ^ index.php [L]` (sans `RewriteBase`).
+- `HostGuard`, la garde `Host`/`Origin` du portail et celle de MCP ne regardent que l'hôte et le port : aucun chemin n'y intervient.
+- Constat rapporté par l'utilisateur (non rejoué par l'Architecte) : sur AlwaysData la réécriture atteint `index.php` et le routeur reçoit `/actions/...`.
+
+### Configuration (existant)
+
+- `APP_BASE_PATH` : chemin de l'application dans l'URL. Absent ou vide = **aucun préfixe, comportement actuel strictement inchangé**.
+- Format : `''` ou une suite de segments `/seg` avec `seg` dans `[A-Za-z0-9._~-]+`, sans barre finale, sans `//`, sans segment `.` ou `..`, sans `?`, `#`, espace ni `%`. Une barre finale unique est tolérée et retirée; `/` seul vaut `''`. Valeur invalide : `InvalidArgumentException('APP_BASE_PATH invalide.')` au chargement (échec franc plutôt qu'un routage faux). Ces caractères sont ceux qui ne demandent aucun encodage d'URL, donc le préfixe configuré est comparable tel quel à `REQUEST_URI` et sûr à insérer dans un en-tête `Location` ou un cookie. Sensible à la casse.
+- `Config` : propriété `appBasePath` (chaîne normalisée), **dernier** argument du constructeur avec défaut `''` (appels existants valides), lue par `fromArray` (`$env['APP_BASE_PATH'] ?? ''`). `.env.example` : ligne `APP_BASE_PATH=` commentée (vide = aucun préfixe; AlwaysData : `/actions`).
+- Pourquoi une variable explicite et non une déduction (`SCRIPT_NAME`, `dirname`) : la valeur de `SCRIPT_NAME` après réécriture dépend de la configuration Apache d'AlwaysData (non vérifiée); une valeur explicite est testable et identique en local, en test et en production. Le mécanisme de variables d'environnement d'AlwaysData reste à trancher (voir « Configuration »).
+
+### Où retirer le préfixe et comment le fournir (existant)
+
+- **Dans `Kernel`**, pas dans `Request::fromGlobals` : `fromGlobals` n'est pas exercé par les tests (qui fabriquent des `Request`), et la décision « hors préfixe = 404 » doit être testée par `Kernel::handle`. `Kernel::__construct(..., string $basePath = '')` (dernier argument, défaut inchangé).
+- `Kernel::handle` : si `$basePath !== ''` : chemin égal à `$basePath` -> chemin relatif `/`; chemin commençant par `$basePath . '/'` -> reste du chemin (qui commence par `/`); **sinon** 404 JSON existant (`RestAdapter::error(404, 'not_found', ...)`), sans appeler d'adaptateur (donc sans garde `Host`: rien n'est lu ni écrit). Le chemin relatif est transmis par une nouvelle méthode `Request::withPath(string): self` (copie, `Request` reste immuable).
+- Conséquence : `PortalAdapter`, `RestAdapter` et `McpAdapter` **ne voient jamais le préfixe** dans `$request->path`; leurs routes (`/tasks`, `/api/v1/...`, `/mcp`) et leurs tests actuels sont inchangés. Le préfixe ne sert qu'à **produire** des URL sortantes; il est fourni par `Bootstrap::kernel` (`$config->appBasePath`) à ceux qui en produisent : `Kernel` (retrait), `PortalAdapter` (`new View(prefix: ...)` et `NativeSession`), `TaskController` (en-tête `Location`). Injection par constructeur avec défaut `''`, comme les listes d'hôtes. Alternative écartée : un attribut `basePath` sur `Request` (les vues sont construites une fois, hors requête; deux sources de vérité).
+- Cas limites : `/actions` et `/actions/` donnent le portail (`/` -> redirection 302 vers `/actions/tasks`); `/actionsfoo/tasks` et `/tasks` -> 404 (comparaison sur `$basePath . '/'`); un chemin avec segments `..` n'est pas normalisé par l'application (hors préfixe ou inconnu -> 404). Un 404 hors préfixe est du JSON même pour un navigateur, comme tout chemin inconnu aujourd'hui.
+
+### Portail : URL sortantes, cookie, assets (existant; fichiers statiques sous AlwaysData non vérifiés)
+
+- **Liens, formulaires, assets, `Location`** : `PortalAdapter` reçoit `string $basePath = ''` et construit `new View(prefix: $basePath)` (existant côté `View`). `$url('/tasks/12')` donne `/actions/tasks/12`; `Renderer::redirect` donne `Location: /actions/tasks/12` (chemin absolu sur le même hôte, valide en HTTP); `/assets/portal.css` donne `/actions/assets/portal.css`. Aucun gabarit à modifier. Filet : un test parcourt les pages rendues avec préfixe et refuse tout attribut `href`, `action` ou `src` commençant par `/` sans le préfixe.
+- **Cookie de session et CSRF** : `NativeSession` reçoit `string $cookiePath = '/'` (Bootstrap : `appBasePath` ou `'/'` si vide) et le passe en `cookie_path` à `session_start`. Raison : sans cela le cookie `actions_session` (donc le jeton CSRF) part vers tous les chemins de `cocault.alwaysdata.net`, y compris d'autres applications du même hôte. `cookie_path = /actions` couvre `/actions` et `/actions/...` mais pas `/actionsfoo`. Le jeton CSRF n'est que dans la session et un champ de formulaire : pas d'autre attribut `path`. `SameSite=Strict` et `HttpOnly` inchangés.
+- **Content-Security-Policy** : `'self'` (`style-src`, `img-src`, `form-action`) est indépendant du chemin; aucun changement.
+- **Fichiers statiques** : sur Apache, le fichier `public/assets/portal.css` n'est servi sous `/actions/assets/portal.css` que si le serveur fait correspondre le préfixe d'URL au dossier `public/`; sinon la réécriture le renvoie à `index.php`, le routeur le voit en `/assets/portal.css` et répond 404. **Non vérifié**. Serveur de développement : `php -S -t public` fait correspondre l'URI au disque (`/actions/assets/...` -> `public/actions/assets/...`, inexistant); le test `/assets/` de `public/index.php` ne s'applique donc qu'**sans** préfixe. Proposé : le développement avec préfixe est vérifié par les tests en mémoire et par `curl` (pages sans feuille de style), sans route statique supplémentaire; si une feuille de style locale sous préfixe est voulue, ajouter dans `public/index.php` une lecture explicite du seul fichier `assets/portal.css` (quelques lignes).
+
+### REST, MCP (existant)
+
+- Chemins publics sous préfixe : `/actions/api/v1/...`, `/actions/mcp`. Le contrat REST (`/api/v1`, versionnement) et le contrat MCP (`POST /mcp`) sont **inchangés** : le préfixe est un détail de déploiement hors contrat, retiré avant les adaptateurs.
+- Seule URL produite par REST : l'en-tête `Location` de `201` (`/api/v1/tasks/{id}`) -> `{basePath}/api/v1/tasks/{id}`. Aucun corps JSON REST ou MCP ne contient d'URL (relu : `TaskController`, `RestAdapter`).
+- Déclaration d'un client MCP sous préfixe : `http://cocault.alwaysdata.net/actions/mcp` (README à mettre à jour à l'implémentation).
+
+### Gardes `Host`, `Origin` et en-têtes (existant : gardes inchangées, vérifié par `testForeignHostIsStillRefusedUnderPrefix`; points AlwaysData non vérifiés)
+
+- `HostGuard` : **aucun changement**. L'en-tête `Host` ne porte pas de chemin; en production il faudra ajouter `cocault.alwaysdata.net` à `PORTAL_ALLOWED_HOSTS` et `MCP_ALLOWED_HOSTS` (sans port si 80/443). `Origin` n'a pas de chemin non plus : le contrôle d'`Origin` du portail (même hôte et même port que `Host`) et `MCP_ALLOWED_ORIGINS` (ex. `http://cocault.alwaysdata.net`) sont inchangés.
+- **Non vérifié** : que le `Host` reçu par PHP derrière AlwaysData soit celui du client (pas de réécriture par un mandataire), et la détection de HTTPS (`$_SERVER['HTTPS']`, utilisée par `Bootstrap` pour `Secure`; un en-tête `X-Forwarded-Proto` ne serait pas lu). Si le site est servi en HTTPS derrière un mandataire, le cookie perdrait `Secure` sans que rien ne le signale : à vérifier au déploiement.
+- Un point de sécurité, distinct du préfixe : voir « À faire valider », point 1.
+
+### `.htaccess` (existant : aucun `RewriteBase` ajouté; comportement sous AlwaysData non vérifié)
+
+- **Ne pas ajouter de `RewriteBase` a priori** : il coderait le préfixe dans un second endroit (désynchronisable de `APP_BASE_PATH`) et casserait le déploiement sans préfixe. La règle actuelle atteint déjà `index.php` selon le constat de l'utilisateur. Si un essai montre une boucle ou un mauvais chemin, ajouter `RewriteBase /actions/` à la main sur le déploiement, et le noter ici. Indice (source secondaire, résumé d'une recherche, 2026-10-12) : les scripts d'installation d'AlwaysData réécrivent la ligne `RewriteBase` d'un `.htaccess` quand l'URL de base n'est pas `/` (`help.alwaysdata.com/en/docs/development/marketplace/build-application-script/` définit `INSTALL_URL_PATH`, « site root (base URL) »; la page ne parle ni de `RewriteBase` ni de la correspondance préfixe/dossier). **Non vérifié** par un essai.
+
+### Tests (existant; rejeu non fait par l'Architecte)
+
+Livré : `ConfigTest`, `tests/Http/BasePathTest` (dont `testSessionCookiePathFollowsPrefix` via `NativeSession::options()` publique), `tests/Integration/BasePathTasksTest`, paramètre de préfixe de `HttpTestCase`. Le parcours manuel `php -S` a été fait par le Developer en local; le parcours navigateur sur AlwaysData reste à faire (**non vérifié**).
+
+- Sans préfixe : toute la suite actuelle, **sans modification**, est le test de non-régression (défaut `''`).
+- `tests/Unit/ConfigTest` : `APP_BASE_PATH` absent, vide, `/` -> `''`; `/actions`, `/actions/` -> `/actions`; `/a/b`; invalides : `actions`, `//x`, `/a//b`, `/a b`, `/a/../b`, `/a?x`, `/a#b`, `/%2e`.
+- `tests/Http/BasePathTest` (`HttpTestCase` gagne un paramètre facultatif de préfixe, défaut `''`; `Kernel` construit via `Bootstrap::kernel` avec la configuration) : avec `/actions` : `GET /actions/api/v1/health` 200; `POST /actions/mcp` `ping` 200; `GET /actions` et `/actions/` 302 vers `/actions/tasks`; `GET /actions/tasks` : HTML sans lien non préfixé; `POST /actions/tasks` -> `Location: /actions/tasks/{id}`; `POST /actions/api/v1/tasks` -> `Location: /actions/api/v1/tasks/{id}`; hors préfixe : `/tasks`, `/api/v1/health`, `/mcp`, `/actionsfoo/tasks` -> 404 JSON `not_found`, aucun adaptateur appelé; `Host` étranger sous préfixe -> 403 comme sans préfixe.
+- Cookie : test de `NativeSession` avec `cookie_path` (dans un processus séparé, `session_get_cookie_params()` après `csrfToken()`), sinon test unitaire d'une méthode `options()` extraite; au choix du Developer, à condition que le chemin soit vérifié.
+- Parcours manuel (non automatisable) : `APP_BASE_PATH=/actions php -S 127.0.0.1:8080 -t public public/index.php` puis `curl`; et, au déploiement, créer/modifier/supprimer une tâche depuis le navigateur sur `http://cocault.alwaysdata.net/actions/`.
+
+### Impact (analyse; constat à l'implémentation : aucune rupture, défaut `''`)
+
+- **Consommateurs** : REST et MCP (contrats inchangés; clients : aucun hors tests); portail (aucun gabarit modifié); tests existants (inchangés : valeur par défaut `''`); données (aucune); `ConfigTest` et `.env.example` (ajouts); `public/index.php` et README. Rien ne casse; l'ajout est compatible parce que le défaut est le comportement actuel.
+- **Fichiers touchés (existant)** : `Config`, `Kernel`, `Request` (`withPath`), `Bootstrap`, `PortalAdapter`, `NativeSession`, `TaskController`, `.env.example`, `README.md`, `CHANGELOG.md`, tests. `public/index.php` : prévu à titre indicatif, finalement non touché.
+
+### Vérifications AlwaysData restantes (non vérifiées)
+
+Correspondance entre le préfixe d'URL du site et la racine `~/actions/public` (donc service direct des fichiers de `assets/`); effet de `RewriteBase`; valeur du `Host` et détection de HTTPS reçues par PHP; sessions par fichiers (déjà « partiellement vérifié »); mécanisme de variables d'environnement pour `APP_BASE_PATH`; POST/JSON de MCP sous le préfixe.
+
+### Validation et points restants
+
+Points 2 à 6 : **validés** par l'approbation de l'utilisateur (2026-10-12) et implémentés; le point 6 retient l'option « sans fichiers statiques sous préfixe en développement ». Le point 1 reste **ouvert** (question à l'utilisateur et au Product Owner, avant tout déploiement).
+
+1. **Exposition publique (question pour l'utilisateur et le Product Owner, pas une décision d'architecture)** : `http://cocault.alwaysdata.net/actions/` est joignable de l'extérieur et aucune authentification n'existe. Les décisions validées disent que portail, REST et MCP ne sont ni déployés ni exposés avant l'authentification (élément P1); les gardes `Host`/`Origin` ne protègent que du rebond DNS, pas d'un visiteur direct, et ajouter le nom d'hôte public aux listes d'hôtes autorisés les ouvre. Faut-il livrer l'authentification avant ce déploiement, protéger le site autrement (restriction d'accès au niveau de l'hébergeur, **non vérifiée**), ou accepter explicitement l'exposition?
+2. Nom `APP_BASE_PATH` et format décrit ci-dessus; échec franc sur valeur invalide.
+3. Retrait dans `Kernel`, 404 JSON hors préfixe, `Request::withPath`.
+4. `cookie_path` égal au préfixe.
+5. Pas de `RewriteBase` a priori.
+6. Développement local avec préfixe sans fichiers statiques (ou lecture explicite de la feuille de style).
 
 ## Dépendances Composer (proposé)
 

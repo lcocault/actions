@@ -14,6 +14,7 @@ final class Config
      * @param list<string> $mcpAllowedOrigins
      * @param list<string> $portalAllowedHosts noms d'hôte (sans port) acceptés dans `Host` par le portail
      * @param list<string> $mcpAllowedHosts noms d'hôte (sans port) acceptés dans `Host` par POST /mcp
+     * @param string $appBasePath préfixe d'URL normalisé : `''` (aucun) ou `/seg[/seg...]` sans barre finale
      */
     public function __construct(
         public readonly string $appEnv,
@@ -25,6 +26,7 @@ final class Config
         public readonly array $mcpAllowedOrigins = [],
         public readonly array $portalAllowedHosts = self::DEFAULT_PORTAL_HOSTS,
         public readonly array $mcpAllowedHosts = self::DEFAULT_MCP_HOSTS,
+        public readonly string $appBasePath = '',
     ) {
     }
 
@@ -62,7 +64,26 @@ final class Config
             $origins,
             $hosts === [] ? self::DEFAULT_PORTAL_HOSTS : $hosts,
             $mcpHosts === [] ? self::DEFAULT_MCP_HOSTS : $mcpHosts,
+            self::basePath($env['APP_BASE_PATH'] ?? ''),
         );
+    }
+
+    /**
+     * Normalise `APP_BASE_PATH` : `''` et `/` valent « aucun préfixe »; une barre finale unique est retirée.
+     * Seuls les caractères qui ne demandent aucun encodage d'URL sont acceptés (comparable tel quel à REQUEST_URI).
+     */
+    private static function basePath(string $value): string
+    {
+        if ($value === '' || $value === '/') {
+            return '';
+        }
+        $path = str_ends_with($value, '/') ? substr($value, 0, -1) : $value;
+        if (preg_match('#\A(?:/[A-Za-z0-9._~-]+)+\z#', $path) !== 1
+            || in_array('..', explode('/', $path), true) || in_array('.', explode('/', $path), true)) {
+            throw new \InvalidArgumentException('APP_BASE_PATH invalide.');
+        }
+
+        return $path;
     }
 
     /** @return list<string> noms en minuscules, sans éléments vides */

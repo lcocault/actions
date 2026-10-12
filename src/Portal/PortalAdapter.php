@@ -38,8 +38,9 @@ final class PortalAdapter
         private readonly Session $session,
         private readonly array $allowedHosts,
         ?View $view = null,
+        string $basePath = '',
     ) {
-        $this->renderer = new Renderer($view ?? new View(), $session);
+        $this->renderer = new Renderer($view ?? new View(prefix: $basePath), $session);
         $this->pages = new TaskPages($tasks, $this->renderer);
     }
 

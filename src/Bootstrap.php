@@ -30,12 +30,19 @@ final class Bootstrap
     {
         $diagnostic = new Diagnostic(static fn (): \PDO => Database::connect($config));
         $tasks = self::taskService($config);
+        $basePath = $config->appBasePath;
         $https = ($_SERVER['HTTPS'] ?? '') !== '' && $_SERVER['HTTPS'] !== 'off';
 
         return new Kernel(
-            new PortalAdapter($tasks, $session ?? new NativeSession($https), $config->portalAllowedHosts),
-            new RestAdapter($diagnostic, new TaskController($tasks)),
+            new PortalAdapter(
+                $tasks,
+                $session ?? new NativeSession($https, $basePath !== '' ? $basePath : '/'),
+                $config->portalAllowedHosts,
+                basePath: $basePath,
+            ),
+            new RestAdapter($diagnostic, new TaskController($tasks, $basePath)),
             new McpAdapter($diagnostic, $tasks, $config->mcpAllowedOrigins, $config->mcpAllowedHosts),
+            $basePath,
         );
     }
 }

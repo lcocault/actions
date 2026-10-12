@@ -9,7 +9,7 @@ final class NativeSession implements Session
 {
     private const COOKIE = 'actions_session';
 
-    public function __construct(private readonly bool $secure = false)
+    public function __construct(private readonly bool $secure = false, private readonly string $cookiePath = '/')
     {
     }
 
@@ -57,16 +57,23 @@ final class NativeSession implements Session
             return;
         }
         session_name(self::COOKIE);
-        if (!session_start([
+        if (!session_start($this->options())) {
+            throw new \RuntimeException('Session indisponible.');
+        }
+    }
+
+    /** @return array<string,mixed> */
+    public function options(): array
+    {
+        return [
             'cookie_httponly' => true,
             'cookie_samesite' => 'Strict',
             'cookie_secure' => $this->secure,
+            'cookie_path' => $this->cookiePath,
             'cookie_lifetime' => 0,
             'use_strict_mode' => true,
             'use_only_cookies' => true,
             'cache_limiter' => '', // les en-têtes de cache sont posés par le portail
-        ])) {
-            throw new \RuntimeException('Session indisponible.');
-        }
+        ];
     }
 }

@@ -12,7 +12,7 @@ use Actions\Http\Response;
 /** Traduit une requête REST en appel de TaskService. Aucune règle métier, aucun SQL; les erreurs de domaine remontent à RestAdapter. */
 final class TaskController
 {
-    public function __construct(private readonly TaskService $tasks)
+    public function __construct(private readonly TaskService $tasks, private readonly string $basePath = '')
     {
     }
 
@@ -24,7 +24,7 @@ final class TaskController
         }
         $task = $this->tasks->create($data);
 
-        return Response::json(201, $task, ['Location' => '/api/v1/tasks/' . $task['id']]);
+        return Response::json(201, $task, ['Location' => $this->basePath . '/api/v1/tasks/' . $task['id']]);
     }
 
     /** Seuls les filtres `status` et `category` sont transmis; les autres paramètres sont ignorés. */

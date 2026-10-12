@@ -94,4 +94,33 @@ final class ConfigTest extends TestCase
             unlink($file);
         }
     }
+
+    private const BASE = ['DB_NAME' => 'n', 'DB_USER' => 'u'];
+
+    public function testAppBasePathDefaultsToNoPrefix(): void
+    {
+        self::assertSame('', Config::fromArray(self::BASE)->appBasePath);
+        self::assertSame('', Config::fromArray(self::BASE + ['APP_BASE_PATH' => ''])->appBasePath);
+        self::assertSame('', Config::fromArray(self::BASE + ['APP_BASE_PATH' => '/'])->appBasePath);
+        self::assertSame('', (new Config('test', 'h', 1, 'n', 'u', 'p'))->appBasePath);
+    }
+
+    public function testAppBasePathIsNormalised(): void
+    {
+        foreach ([['/actions', '/actions'], ['/actions/', '/actions'], ['/a/b', '/a/b'], ['/A.b_c~d-1', '/A.b_c~d-1']] as [$in, $out]) {
+            self::assertSame($out, Config::fromArray(self::BASE + ['APP_BASE_PATH' => $in])->appBasePath, $in);
+        }
+    }
+
+    public function testInvalidAppBasePathFailsLoudly(): void
+    {
+        foreach (['actions', '//x', '/a//b', '/a b', '/a/../b', '/..', '/.', '/a/./b', '/a?x', '/a#b', '/%2e', '/actions//', '/é', "/a\n"] as $bad) {
+            try {
+                Config::fromArray(self::BASE + ['APP_BASE_PATH' => $bad]);
+                self::fail("Exception attendue pour " . json_encode($bad));
+            } catch (\InvalidArgumentException $e) {
+                self::assertSame('APP_BASE_PATH invalide.', $e->getMessage());
+            }
+        }
+    }
 }

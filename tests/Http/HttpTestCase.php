@@ -13,9 +13,9 @@ use PHPUnit\Framework\TestCase;
 abstract class HttpTestCase extends TestCase
 {
     /** @param list<string> $origins */
-    protected function call(string $method, string $path, array $headers = [], string $body = '', array $origins = [], int $dbPort = 1): Response
+    protected function call(string $method, string $path, array $headers = [], string $body = '', array $origins = [], int $dbPort = 1, string $basePath = ''): Response
     {
-        $config = new Config('test', '127.0.0.1', $dbPort, 'secret_db', 'secret_user', 'secret_pwd', $origins);
+        $config = new Config('test', '127.0.0.1', $dbPort, 'secret_db', 'secret_user', 'secret_pwd', $origins, appBasePath: $basePath);
 
         return Bootstrap::kernel($config)->handle(new Request($method, $path, array_change_key_case($headers), $body));
     }

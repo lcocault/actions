@@ -39,6 +39,8 @@ Serveur démarré (étape 6) : `claude mcp add --transport http actions http://1
 
 Le portail refuse (403) toute requête dont l'en-tête `Host` n'est pas `127.0.0.1`, `localhost` ou `[::1]` (protection contre le « DNS rebinding », puisqu'il n'y a pas d'authentification). Pour un autre nom d'hôte local, le déclarer dans `PORTAL_ALLOWED_HOSTS` (`.env`, noms séparés par des virgules, sans port). Ne jamais exposer le portail tel quel hors de la machine : toute personne qui l'atteint lit et supprime toutes les données.
 
+Préfixe d'URL : `APP_BASE_PATH` (ex. `/actions`, vide par défaut = aucun préfixe) fait servir portail, REST et MCP sous ce préfixe (`/actions/tasks`, `/actions/api/v1/...`, client MCP : `http://cocault.alwaysdata.net/actions/mcp`). Valeur invalide : erreur 500 au chargement. Avec `php -S` et un préfixe, la feuille de style `/actions/assets/portal.css` n'est pas servie (limite connue; pages et API utilisables); sans préfixe, elle l'est. Voir [docs/architecture.md](docs/architecture.md).
+
 ## Tests
 
 - `composer test` : tout (Unit, Http, Integration; les tests d'intégration exigent PostgreSQL et la base `actions_test`, et échouent si elle est absente).

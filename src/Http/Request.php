@@ -21,6 +21,12 @@ final class Request
     ) {
     }
 
+    /** Copie de la requête avec un autre chemin (la requête reste immuable). */
+    public function withPath(string $path): self
+    {
+        return new self($this->method, $path, $this->headers, $this->body, $this->query, $this->form);
+    }
+
     public function header(string $name): ?string
     {
         return $this->headers[strtolower($name)] ?? null;
