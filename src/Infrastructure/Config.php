@@ -7,8 +7,12 @@ namespace Actions\Infrastructure;
 final class Config
 {
     public const ENVIRONMENTS = ['local', 'test', 'production'];
+    public const DEFAULT_PORTAL_HOSTS = ['127.0.0.1', 'localhost', '[::1]'];
 
-    /** @param list<string> $mcpAllowedOrigins */
+    /**
+     * @param list<string> $mcpAllowedOrigins
+     * @param list<string> $portalAllowedHosts noms d'hôte (sans port) acceptés dans `Host` par le portail
+     */
     public function __construct(
         public readonly string $appEnv,
         public readonly string $dbHost,
@@ -17,6 +21,7 @@ final class Config
         public readonly string $dbUser,
         public readonly string $dbPassword,
         public readonly array $mcpAllowedOrigins = [],
+        public readonly array $portalAllowedHosts = self::DEFAULT_PORTAL_HOSTS,
     ) {
     }
 
@@ -40,6 +45,11 @@ final class Config
             array_map('trim', explode(',', $env['MCP_ALLOWED_ORIGINS'] ?? '')),
             static fn (string $o): bool => $o !== '',
         ));
+        // Hôtes du portail : minuscules; variable absente ou vide = défaut (local seulement).
+        $hosts = array_values(array_filter(
+            array_map(static fn (string $h): string => strtolower(trim($h)), explode(',', $env['PORTAL_ALLOWED_HOSTS'] ?? '')),
+            static fn (string $h): bool => $h !== '',
+        ));
 
         return new self(
             $appEnv,
@@ -49,6 +59,7 @@ final class Config
             $env['DB_USER'],
             $env['DB_PASSWORD'] ?? '',
             $origins,
+            $hosts === [] ? self::DEFAULT_PORTAL_HOSTS : $hosts,
         );
     }
 

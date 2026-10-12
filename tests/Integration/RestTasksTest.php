@@ -303,7 +303,7 @@ final class RestTasksTest extends DbTestCase
         $service = new TaskService(new TaskRepository(static fn (): \PDO => $pdo));
 
         return new Kernel(
-            new PortalAdapter($diagnostic),
+            new PortalAdapter($service, new \Actions\Tests\Support\ArraySession(), ['127.0.0.1']),
             new RestAdapter($diagnostic, new TaskController($service)),
             new McpAdapter($diagnostic, []),
         );

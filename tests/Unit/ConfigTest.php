@@ -23,6 +23,21 @@ final class ConfigTest extends TestCase
         self::assertSame('127.0.0.1', $c->dbHost);
         self::assertSame(5432, $c->dbPort);
         self::assertSame([], $c->mcpAllowedOrigins);
+        self::assertSame(['127.0.0.1', 'localhost', '[::1]'], $c->portalAllowedHosts);
+    }
+
+    public function testPortalAllowedHostsAreSplitAndLowercased(): void
+    {
+        $c = Config::fromArray(['DB_NAME' => 'n', 'DB_USER' => 'u', 'PORTAL_ALLOWED_HOSTS' => ' Actions.Local , ,127.0.0.1']);
+        self::assertSame(['actions.local', '127.0.0.1'], $c->portalAllowedHosts);
+    }
+
+    public function testEmptyPortalAllowedHostsFallBackToDefault(): void
+    {
+        foreach (['', ' , '] as $value) {
+            $c = Config::fromArray(['DB_NAME' => 'n', 'DB_USER' => 'u', 'PORTAL_ALLOWED_HOSTS' => $value]);
+            self::assertSame(Config::DEFAULT_PORTAL_HOSTS, $c->portalAllowedHosts);
+        }
     }
 
     public function testOriginsAreSplit(): void

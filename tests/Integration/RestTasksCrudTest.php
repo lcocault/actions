@@ -440,7 +440,7 @@ final class RestTasksCrudTest extends DbTestCase
         $service = new TaskService(new TaskRepository(static fn (): \PDO => $pdo));
 
         return new Kernel(
-            new \Actions\Portal\PortalAdapter($diagnostic),
+            new \Actions\Portal\PortalAdapter($service, new \Actions\Tests\Support\ArraySession(), ['127.0.0.1']),
             new \Actions\Rest\RestAdapter($diagnostic, new \Actions\Rest\TaskController($service)),
             new \Actions\Mcp\McpAdapter($diagnostic, []),
         );

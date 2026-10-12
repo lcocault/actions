@@ -11,25 +11,30 @@ use Actions\Http\Kernel;
 use Actions\Infrastructure\Config;
 use Actions\Infrastructure\Database;
 use Actions\Mcp\McpAdapter;
+use Actions\Portal\NativeSession;
 use Actions\Portal\PortalAdapter;
+use Actions\Portal\Session;
 use Actions\Rest\RestAdapter;
 use Actions\Rest\TaskController;
 
 final class Bootstrap
 {
-    /** Cas d'usage des tâches (REST l'utilise; MCP et portail le recevront plus tard). */
+    /** Cas d'usage des tâches (REST et portail l'utilisent; MCP le recevra plus tard). */
     public static function taskService(Config $config): TaskService
     {
         return new TaskService(new TaskRepository(static fn (): \PDO => Database::connect($config)));
     }
 
-    public static function kernel(Config $config): Kernel
+    /** $session : NativeSession par défaut (les tests passent une session en mémoire). */
+    public static function kernel(Config $config, ?Session $session = null): Kernel
     {
         $diagnostic = new Diagnostic(static fn (): \PDO => Database::connect($config));
+        $tasks = self::taskService($config);
+        $https = ($_SERVER['HTTPS'] ?? '') !== '' && $_SERVER['HTTPS'] !== 'off';
 
         return new Kernel(
-            new PortalAdapter($diagnostic),
-            new RestAdapter($diagnostic, new TaskController(self::taskService($config))),
+            new PortalAdapter($tasks, $session ?? new NativeSession($https), $config->portalAllowedHosts),
+            new RestAdapter($diagnostic, new TaskController($tasks)),
             new McpAdapter($diagnostic, $config->mcpAllowedOrigins),
         );
     }

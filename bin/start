@@ -46,7 +46,7 @@ else
 fi
 
 for _ in $(seq 1 20); do
-  curl -fs "http://$HOST:$PORT/api/v1/health" >/dev/null && { echo "OK : http://$HOST:$PORT (santé : /api/v1/health, MCP : POST /mcp)"; exit 0; }
+  curl -fs "http://$HOST:$PORT/api/v1/health" >/dev/null && { echo "OK : portail http://$HOST:$PORT/ (santé : /api/v1/health, MCP : POST /mcp)"; exit 0; }
   sleep 0.5
 done
 echo "Le serveur ne répond pas ; voir : docker logs $WEB" >&2

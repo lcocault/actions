@@ -7,25 +7,14 @@ namespace Actions\Rest;
 use Actions\Application\DatabaseUnavailable;
 use Actions\Application\Diagnostic;
 use Actions\Application\DomainError;
-use Actions\Application\InvalidTask;
+use Actions\Http\DomainStatus;
+use Actions\Http\PathId;
 use Actions\Http\Request;
 use Actions\Http\Response;
 
 /** Routage REST (méthode + chemin) et conversion unique des erreurs en réponses HTTP. */
 final class RestAdapter
 {
-    /** Statut HTTP par code d'erreur de domaine; un code absent de la table est une erreur interne. */
-    private const DOMAIN_STATUS = [
-        'task_not_found' => 404,
-        'required_task_not_found' => 422,
-        'dependency_self' => 422,
-        'dependency_cycle' => 409,
-        'task_is_required' => 409,
-        'status_transition_invalid' => 409,
-        'required_actions_not_done' => 409,
-        'next_due_date_out_of_range' => 409,
-    ];
-
     public function __construct(
         private readonly Diagnostic $diagnostic,
         private readonly TaskController $tasks,
@@ -37,8 +26,7 @@ final class RestAdapter
         try {
             return $this->route($request);
         } catch (DomainError $e) {
-            // Les codes de validation forment une famille ouverte : statut par classe, puis par table.
-            $status = $e instanceof InvalidTask ? 422 : (self::DOMAIN_STATUS[$e->code()] ?? null);
+            $status = DomainStatus::of($e);
             if ($status === null) {
                 error_log('rest: code de domaine sans statut : ' . $e->code());
 
@@ -84,7 +72,7 @@ final class RestAdapter
         }
 
         if (preg_match('#^/api/v1/tasks/([^/]+)$#', $path, $m) === 1) {
-            $id = self::id($m[1]);
+            $id = PathId::parse($m[1]);
             if ($id === null) {
                 return self::notFound();
             }
@@ -98,8 +86,8 @@ final class RestAdapter
         }
 
         if (preg_match('#^/api/v1/tasks/([^/]+)/required-actions/([^/]+)$#', $path, $m) === 1) {
-            $id = self::id($m[1]);
-            $requiredId = self::id($m[2]);
+            $id = PathId::parse($m[1]);
+            $requiredId = PathId::parse($m[2]);
             if ($id === null || $requiredId === null) {
                 return self::notFound();
             }
@@ -112,17 +100,6 @@ final class RestAdapter
         }
 
         return self::notFound();
-    }
-
-    /** Entier positif sans zéro initial tenant dans un entier PHP; sinon null (404). */
-    private static function id(string $segment): ?int
-    {
-        if (preg_match('/^[1-9][0-9]*$/', $segment) !== 1) {
-            return null;
-        }
-        $id = filter_var($segment, FILTER_VALIDATE_INT);
-
-        return is_int($id) ? $id : null;
     }
 
     private static function notFound(): Response

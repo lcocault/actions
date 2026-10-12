@@ -19,8 +19,9 @@ Légende des statuts : **existant** (dans le dépôt, vérifiable), **proposé**
 - **Validé** (décisions de l'utilisateur transmises pour la tranche A, 2026-10-11) : titre fait seulement de tabulations/retours à la ligne refusé (validation de domaine, en plus du `CHECK`); ajout d'un lien déjà existant idempotent (succès, aucun doublon); date butée passée autorisée; suppression d'une tâche requise refusée avec la liste des dépendants; cycles et auto-dépendance refusés.
 - **Validé, non livré (tranche B)** : états `À faire` / `En cours` / `Terminée`, transitions, terminaison avec actions requises, occurrence d'une périodique, suppression (décisions explicites); Q1 à Q12 **validées par délégation** (non confirmées explicitement). Conception **proposée** (migration `0002`, erreurs, contrat REST) : voir « Cycle de vie (tranche B) ».
 - **Validé par l'Architecte** (2026-10-11), les deux écarts du Developer par rapport à l'esquisse de 0001 : voir « Schéma des tâches ».
+- **Validé** (utilisateur, 2026-10-11, décisions PW1 à PW12 du backlog, recommandations du Product Owner retenues) : portail local sans authentification, jamais déployé ni exposé avant l'authentification; pages rendues par le serveur PHP appelant `TaskService` (confirmé techniquement par l'Architecte); aucune bibliothèque, CSS maison local, pas de CDN; dates `JJ/MM/AAAA`, horodatages Europe/Paris, durée en minutes; confirmation avant suppression; tâches terminées visibles par défaut avec filtre; message de confirmation avec lien pour `next_occurrence`; dépendances choisies dans une liste, refus des cycles en base; boutons de transition selon l'état, avertissement sans blocage avant réouverture; CSRF par formulaire + session minimale + contrôle d'`Origin` + en-têtes de sécurité + échappement; périodicité « tous les N unité », catégorie sans défaut, titre tel quel; deux tranches B1/B2. La **conception** qui en découle est **proposée** : voir « Portail web (tranches B1 et B2) ».
 
-Les sections « Contrat REST » et « Contrat MCP » du squelette sont validées et implémentées; les autres sections « (proposé) » ci-dessous couvrant des points de cette liste (migrations, dépendances, PHP) ont le statut de la liste. Restent **proposés** ou **à vérifier** : tous les points « non vérifiés » AlwaysData, le contrat du portail, la procédure de démarrage détaillée, les variables de configuration et la convention de tests (acceptées de fait par le Developer, sans validation explicite de l'utilisateur).
+Les sections « Contrat REST » et « Contrat MCP » du squelette sont validées et implémentées; les autres sections « (proposé) » ci-dessous couvrant des points de cette liste (migrations, dépendances, PHP) ont le statut de la liste. Restent **proposés** ou **à vérifier** : tous les points « non vérifiés » AlwaysData, la conception du portail (décisions PW1 à PW12 validées, contrat B1/B2 proposé), la procédure de démarrage détaillée, les variables de configuration et la convention de tests (acceptées de fait par le Developer, sans validation explicite de l'utilisateur).
 
 ## Prérequis AlwaysData (vérifiés le 2026-10-10)
 
@@ -35,8 +36,9 @@ Sources : documentation officielle `help.alwaysdata.com`, pages ouvertes à cett
 | PostgreSQL 16, 17, 18; hôte `postgresql-[compte].alwaysdata.net:5432`; pgBouncer sur 5433; accès via SSH/`psql` ou phpPgAdmin | Vérifié | `/en/docs/web-hosting/databases/postgresql/` |
 | Accès SSH (`ssh-[compte].alwaysdata.net`, désactivé par défaut, à activer par utilisateur) | Vérifié de façon indirecte | Résumé d’une recherche sur `/en/docs/web-hosting/remote-access/ssh/`; page non ouverte directement. À reconfirmer avant le déploiement. |
 | Endpoint HTTP POST/JSON (MCP sans SSE) servi par PHP/Apache | Déduit, non vérifié par un test | Rien dans la documentation ne l’interdit; à tester lors de la tranche de déploiement. |
-| Réécriture d’URL (`mod_rewrite` via `.htaccess` vers un front controller) | **Non vérifié** | La page PHP n’évoque que `.htaccess`, pas `mod_rewrite`. La page dédiée `.htaccess` n’a pas pu être lue (404 sur l’URL essayée). |
-| Racine web pointant sur `public/` | **Non vérifié** | Se règle dans Web > Sites; page de configuration non lue. |
+| Réécriture d’URL (`.htaccess` vers un front controller) | **Partiellement vérifié** (2026-10-11) | `/en/docs/web-hosting/sites/http-servers/htaccess-file/` contient une section « URL rewriting » avec `RewriteEngine On`, `RewriteCond %{REQUEST_FILENAME} !-f`, `RewriteRule` (exemple à cible factice, aucun exemple de front controller PHP; le nom `mod_rewrite` n'y figure pas). Le comportement réel (règle vers `index.php`) n'est pas testé : **non vérifié** tant qu'aucun essai n'a été fait sur un compte. |
+| Racine web pointant sur `public/` | **Non vérifié** (2026-10-11) | `/en/docs/web-hosting/sites/add-a-site/` dit seulement que l'ajout d'un site ne crée pas le répertoire racine (à créer par accès distant); elle ne dit pas si la racine peut être un sous-dossier tel que `public/`. Les pages `/en/sites/` et `/en/languages/php/` essayées renvoient 404. |
+| Sessions PHP (cookie de session, fichiers) | **Partiellement vérifié** (2026-10-11) | Le `php.ini` d'exemple (PHP 8.2) de `/en/docs/web-hosting/languages/php/configuration/` contient `session.save_path = /home/<compte>/admin/tmp`, ce qui indique un stockage de sessions par fichiers prévu. L'extension `session` (incluse par défaut dans PHP, non listée par la page), le ramasse-miettes et les réglages de cookie ne sont pas documentés dans ce que l'Architecte a lu : **non vérifié** pour la version cible. |
 | Variables d’environnement pour la configuration | **Non vérifié** | Non couvert par la page de configuration PHP. |
 | Transmission de l’en-tête `Authorization` à PHP (FastCGI) | **Non vérifié** | Sans objet dans cette tranche; à vérifier avant la tranche d’authentification. |
 | Délais maximaux d’exécution/requête | **Non vérifié** | Sans objet pour le squelette (réponses JSON courtes). |
@@ -51,7 +53,7 @@ src/
   Http/                   Request, Response, Router minimal (traduction HTTP uniquement)
   Rest/                   Adaptateur REST (contrôleurs, format d’erreur)
   Mcp/                    Adaptateur MCP (JSON-RPC, outils)
-  Portal/                 Adaptateur portail (pages)
+  Portal/                 Adaptateur portail (pages); détail proposé : « Portail web (tranches B1 et B2) »
   Application/            Cas d’usage et règles métier, partagés par les trois adaptateurs
     Diagnostic.php        Cas d’usage du squelette (existant)
     TaskService.php       Cas d’usage des tâches (proposé, tranche A)
@@ -123,9 +125,9 @@ Dépend du cas d’usage : `ping` -> `Diagnostic::ping()`. Les futurs outils CRU
 
 Alternative écartée : SDK PHP MCP tiers. Non évalué en détail (maturité, dépendances PSR, compatibilité hébergement non vérifiées); le protocole minimal du squelette (4 messages) s’écrit en environ 150 lignes. À réévaluer quand les outils CRUD arriveront.
 
-## Contrat du portail (proposé)
+## Contrat du portail
 
-`GET /` : 200 `text/html; charset=utf-8`, page HTML statique indiquant que l’application fonctionne (aucun style, aucune authentification dans cette tranche). Cas d’usage appelé : `Diagnostic::ping()`.
+**Existant** (squelette) : `GET /` : 200 `text/html; charset=utf-8`, page HTML statique indiquant que l’application fonctionne, via `Diagnostic::ping()`; `PortalTest` (2 tests). **Proposé** : cette page est remplacée par le portail des tâches, voir « Portail web (tranches B1 et B2) » plus bas.
 
 ## Configuration (proposé)
 
@@ -133,6 +135,7 @@ Alternative écartée : SDK PHP MCP tiers. Non évalué en détail (maturité, d
 - Variables : `APP_ENV` (`local`, `test`, `production`; **défaut `production` si absente**, choix le plus restrictif pour le garde-fou des migrations), `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `MCP_ALLOWED_ORIGINS` (liste séparée par des virgules, vide par défaut), `TEST_DB_NAME` (défaut `actions_test`), `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` (utilisées par `compose.yaml` seulement).
 - État au 2026-10-10 : implémenté par le Developer (existant, relu dans `src/Infrastructure/Config.php`, `compose.yaml`, `.env.example`); le comportement reste à valider par l'utilisateur.
 - `.env.example` fourni, sans secret; `.env` et tout fichier de secrets dans `.gitignore`.
+- **Proposé** (portail) : `PORTAL_ALLOWED_HOSTS` (noms d'hôte sans port, séparés par des virgules; défaut `127.0.0.1,localhost,[::1]`).
 - Le mécanisme de configuration sur AlwaysData (variables d’environnement ou fichier hors racine web) n’est pas vérifié : à trancher à la tranche de déploiement.
 
 ## Données et migrations
@@ -610,6 +613,180 @@ Tableau des erreurs de la tranche : 404 `task_not_found`; 422 `status_invalid`, 
 5. `TaskService::patch` (nouveau cas d'usage d'aiguillage) plutôt que modifier `update`.
 6. `Request::$query`.
 7. Les décisions Q1 à Q12 restent « validées par délégation » : l'utilisateur peut les confirmer ou les rouvrir; la migration étant additive, une réouverture de Q1 à Q6 coûte une règle de service, pas une migration, sauf Q5 (contrainte de clôture).
+
+## Portail web (tranches B1 et B2) — conception du 2026-10-11, **non livrée**
+
+Statuts. **Validé** : PW1 à PW12 (voir « Décisions validées »). **Proposé** : tout le reste (routes, formulaires, classes, en-têtes, tests) : non opposable au Developer avant validation. **Conçu maintenant** : B1 et B2 en détail (B1 n'est pas encore validée, B2 en dépend). Hors périmètre : MCP, authentification, déploiement, migration (aucune), dépendance (aucune).
+
+### Décisions d'architecture
+
+- **Rendu serveur appelant `TaskService` (PW2) : confirmé.** Les règles (validation, cycles, transitions, terminaison) vivent déjà dans `TaskService` et en base; une application JavaScript sur REST ajouterait un second contrat et ferait de l'API sans authentification l'unique surface. Le portail est un troisième adaptateur : il traduit formulaire -> tableau PHP -> cas d'usage, et exception de domaine -> page. Alternative écartée : portail appelant REST en HTTP (aller-retour inutile, sérialisation en double).
+- **Aucune règle dans le portail.** Sont de la présentation et non des règles : libellés français, formats de date, choix des boutons (via `TaskStatus::allowedTargets()`, la table des transitions existante, lue et non recopiée), regroupement de messages d'erreur, et le masquage des terminées (voir `hide_done`).
+- **Une seule table code d'erreur -> statut HTTP**, partagée par REST et portail : extraire `DOMAIN_STATUS` et la règle « `InvalidTask` = 422 » de `RestAdapter` vers une petite classe `Http\DomainStatus` (comportement REST inchangé, tests REST inchangés). Même extraction pour l'analyse d'un identifiant de chemin (`[1-9][0-9]*` + `FILTER_VALIDATE_INT`, `RestAdapter::id()` aujourd'hui privée) vers `Http\PathId`. Alternative : dupliquer ces deux morceaux, refusée (risque de divergence des statuts entre interfaces).
+- **Session minimale** : session PHP native (cookie `actions_session`, `HttpOnly`, `SameSite=Strict`, `Secure` si la requête est en HTTPS, durée = navigateur). Elle ne contient que : le jeton CSRF (aléatoire, 32 octets via `random_bytes`, valeur hexadécimale) et un message flash. Pas de compte, pas de lien avec l'authentification future. Alternative écartée : cookie double-submit (aucune session) : il ne porte pas le message flash de la redirection (PW7), qui obligerait à mettre l'information dans l'URL.
+- **Jeton CSRF** : un jeton par session, inséré dans chaque formulaire `POST` (champ `_csrf`), comparé par `hash_equals`. Non à usage unique : l'usage unique casserait « retour arrière », deux onglets et le réaffichage d'un formulaire après erreur. « Par formulaire » (PW10) = chaque formulaire en porte un.
+- **Tests de la session** : interface `Portal\Session` (`csrfToken()`, `flash(array)`, `pullFlash()`, `close()`) et deux implémentations : `NativeSession` (production) et `ArraySession` (tests, sans en-tête ni cookie). Deux implémentations justifient l'interface : sans elle les tests HTTP dépendraient de `session_start()` et des en-têtes.
+- **Fichiers statiques** : une feuille `public/assets/portal.css`, sans JavaScript (PW3 : « JavaScript minimal facultatif » : aucun dans B1/B2; chaque besoin futur sera à justifier). Le serveur de développement `php -S ... public/index.php` ne sert pas les fichiers existants si le routeur ne le demande pas : `public/index.php` gagne, en tête, `if (PHP_SAPI === 'cli-server' && str_starts_with($path, '/assets/') && is_file(__DIR__ . $path)) { return false; }` (`$path` = chemin décodé de l'URL, sans `..`). Sur AlwaysData (Apache) le fichier existant est servi directement si la règle de réécriture exclut les fichiers existants (`!-f`) : **non vérifié**.
+- **URL et préfixe** : tous les liens et actions de formulaire sont produits par un seul assistant `$url('/tasks/12')`, pour pouvoir préfixer plus tard (`/index.php` si la réécriture est indisponible sur AlwaysData). Non conçu davantage (tranche de déploiement).
+
+### Organisation du code (proposé)
+
+```
+src/Portal/
+  PortalAdapter.php     Routage portail, garde (Host, Origin, CSRF), en-têtes de sécurité, conversion des erreurs en pages
+  TaskPages.php         Un cas d'usage -> une méthode : list, show, newForm, create, editForm, update, deleteConfirm, delete (B1)
+                        B2 : addRequiredAction, removeRequiredAction, changeStatus, reopenConfirm (dans TaskPages ou TaskActionPages)
+  TaskForm.php          Formulaire <-> tableau pour TaskService (traduction de transport, aucune règle)
+  Labels.php            Codes -> français (état, catégorie, unité), dates JJ/MM/AAAA, horodatages Europe/Paris, durée, périodicité
+  Messages.php          Code d'erreur -> message de portail (repli : message de l'exception)
+  Session.php, NativeSession.php   (et tests/Support/ArraySession.php)
+  View.php              Rendu de gabarits PHP natifs, assistant d'échappement
+  Views/                layout.php, task_list.php, task_detail.php, task_form.php, task_delete.php, error.php (B2 : partiels)
+src/Http/DomainStatus.php, PathId.php   Extraits de RestAdapter (voir plus haut)
+public/assets/portal.css
+```
+
+- `Kernel` : le portail reçoit `/`, `/tasks` et `/tasks/...` (aucun conflit avec `/api/v1` ni `/mcp`); les autres chemins inconnus restent en 404 JSON (existant). `Bootstrap::kernel(Config, ?Session = null)` : `NativeSession` par défaut; `PortalAdapter` reçoit `TaskService`, `Session` et les hôtes autorisés. Signature compatible avec les appels existants.
+- `Request` gagne `public readonly array $form = []` (dernier argument, appels existants valides), rempli par `fromGlobals()` depuis `$_POST`. Seule modification d'une classe HTTP; `Response` inchangée (en-têtes libres; `X-Content-Type-Options: nosniff` déjà ajouté par `send()`).
+- **Gabarits** : PHP natif, un seul assistant `$e(mixed): string` = `htmlspecialchars(..., ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')`, appliqué à **toute** valeur affichée, y compris dans les attributs; `$url()` pour les liens. Aucune sortie brute hors `$e`/`$url`; les textes de messages sont eux aussi échappés. Les sauts de ligne d'une description s'affichent par CSS `white-space: pre-wrap`, pas par `nl2br`. Test de garde : un test unitaire qui parcourt `Views/` et refuse tout `<?=` ou `echo` qui n'appelle pas `$e(`/`$url(` (filet bon marché, non exhaustif).
+- Dépendance dirigée comme les autres adaptateurs : `Portal` -> `Application` (`TaskService`, `TaskStatus`, exceptions). Aucun SQL, aucun `PDO`. L'accès aux tâches liées d'une page passe par `list()`.
+
+### Garde de chaque requête portail (proposé)
+
+Ordre : Host -> méthode/route -> (POST) Origin -> (POST) CSRF -> cas d'usage.
+1. **Host** : le nom d'hôte de l'en-tête `Host` doit figurer dans `PORTAL_ALLOWED_HOSTS` (défaut : `127.0.0.1`, `localhost`, `[::1]`), sinon 403. Raison : sans authentification (PW1), une page tierce qui fait pointer son nom DNS vers `127.0.0.1` (« DNS rebinding ») pourrait lire les données; le contrôle d'`Origin` seul ne protège pas les `GET`. **Ajout de l'Architecte, à valider** (une variable de configuration).
+2. **Origin** (requêtes `POST`) : si l'en-tête est présent, son hôte et son port doivent être ceux de `Host`, sinon 403. Absent : accepté (le jeton CSRF reste exigé). Même esprit que le contrôle MCP, sans liste à configurer.
+3. **CSRF** : champ `_csrf` absent ou différent de la session : 403, page « Requête refusée. Rechargez la page et recommencez. », rien n'est exécuté. Aucune modification par `GET`.
+4. **En-têtes sur toute réponse HTML** : `Content-Security-Policy: default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'` (pas de script; `form-action 'self'` est compatible avec les redirections vers la même origine), `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` (pages contenant des données et le jeton).
+5. **Erreurs** : aucune trace, aucun message PDO, aucun SQL, aucune valeur saisie répétée dans un message; détail au journal (`error_log`). `display_errors` reste réglé par `public/index.php` (actif seulement en `local`).
+
+### Routes et contrat des pages — B1 (proposé)
+
+Pages en `text/html; charset=utf-8`, `<html lang="fr">`, titre de page distinct (`<Page> — Actions`). Formulaires `application/x-www-form-urlencoded`. Succès d'une écriture : **303 See Other** vers la page de résultat (Post/Redirect/Get), jamais de page rendue en réponse à un `POST` réussi. Identifiant de chemin invalide (hors `[1-9][0-9]*`) ou tâche inconnue : 404 (page « Tâche introuvable. »). Méthode non prévue sur une route connue : 405 avec `Allow` (page texte courte).
+
+| Méthode, chemin | Cas d'usage | Succès | Erreurs |
+|---|---|---|---|
+| `GET /` | — | 302 vers `/tasks` | — |
+| `GET /tasks` (paramètres `status`, `category`, `hide_done`) | `list` | 200 liste | 422 (filtre hors liste : page d'erreur, sans liste), 503 |
+| `GET /tasks/new` | — | 200 formulaire vide | — |
+| `POST /tasks` | `create` | 303 vers `/tasks/{id}`, flash « Tâche créée. » | 422 formulaire réaffiché avec saisie et erreurs; 403 CSRF |
+| `GET /tasks/{id}` | `get` (+ `list` pour l'état des actions requises) | 200 détail | 404 |
+| `GET /tasks/{id}/edit` | `get` | 200 formulaire prérempli | 404 |
+| `POST /tasks/{id}` | `update` | 303 vers `/tasks/{id}`, flash « Tâche enregistrée. » | 404; 422 formulaire réaffiché; 403 |
+| `GET /tasks/{id}/delete` | `get` | 200 page de confirmation nommant la tâche (PW5) | 404 |
+| `POST /tasks/{id}/delete` | `get` (titre pour le flash) puis `delete` | 303 vers `/tasks`, flash « Tâche « titre » supprimée. » | 404; **409** page de confirmation réaffichée avec la liste des tâches dépendantes (liens); 403 |
+
+Statuts d'erreur de domaine : ceux de REST via `Http\DomainStatus` (`InvalidTask` 422, `TaskNotFound` 404, conflits 409), `DatabaseUnavailable` 503 (page « Service indisponible. »), toute autre exception 500 (page « Erreur interne. »), toutes sans détail technique. Réponse d'erreur de formulaire : la page porte le statut de l'erreur (422/409) et non 200.
+
+**`GET /tasks`** : valeurs de `status` : `todo`, `in_progress`, `done`; de `category` : `Pro`, `Perso`; la valeur vide (option « Tous ») équivaut à l'absence de filtre (le portail retire les chaînes vides avant d'appeler `list`; REST, lui, refuse une valeur vide). Filtres combinés en ET par `TaskService::list`; l'ordre est celui du cas d'usage (date butée croissante, sans date en dernier, puis `id`). **`hide_done=1`** (PW6) : le portail retire de la liste renvoyée les tâches `done` (filtre de présentation, aucune règle métier, aucun changement de `TaskService`); `status=done` avec `hide_done=1` donne une liste vide, signalée. Le formulaire de filtre est un `GET` (adresse partageable, pas de CSRF) qui conserve les valeurs choisies; liste vide : message « Aucune tâche. » (ou « Aucune tâche ne correspond aux filtres. »). Colonnes : titre (lien), catégorie, état (libellé en français en texte, pas seulement une couleur), date butée `JJ/MM/AAAA`, périodicité en français.
+
+**Formulaire de tâche** (`create` et `update`) : champs, tous reliés à un `<label>` :
+
+| Champ (nom) | Contrôle | Transport vers `TaskService` |
+|---|---|---|
+| `title` | texte, `maxlength="255"` et indication « 255 caractères au plus » | transmis tel quel (pas de `trim`; PW11) |
+| `category` | liste avec option vide « Choisir… » sélectionnée par défaut, `Pro`, `Perso` | tel quel; vide = `category_invalid` fourni par le cas d'usage |
+| `due_date` | `<input type="date">` (valeur `AAAA-MM-JJ`; affichage selon le navigateur, ce qui satisfait `JJ/MM/AAAA` sans analyser de date côté PHP) | vide -> `null` |
+| `recurrence_interval`, `recurrence_unit` | nombre `min="1"` + liste « jour(s), semaine(s), mois, année(s) » (valeurs `day`, `week`, `month`, `year`), présentés « Répéter tous les [N] [unité] » | les deux vides -> `recurrence: null`; sinon `{interval, unit}` avec un élément vide -> `null` (le validateur tranche : `recurrence_incomplete`, etc.) |
+| `estimated_minutes` | nombre `min="1"`, libellé « Durée estimée (minutes) » | vide -> `null` |
+| `description` | zone de texte | vide -> `null` |
+| `_csrf` | caché | contrôlé par la garde |
+
+`TaskForm` convertit seulement le **type de transport** : une chaîne composée de chiffres et tenant dans un entier PHP devient `int`; toute autre chaîne reste telle quelle, le cas d'usage la refuse (`field_type_invalid` ou `*_invalid`). Il ne retransmet que les six champs de la liste (aucun `status` ni `required_actions` ne peut passer par ce formulaire). `update` reçoit **toujours** les six champs (un champ vidé efface la valeur); `TaskService::update` compare et n'écrit pas si rien n'a changé.
+
+**Erreurs de formulaire (accessibilité)** : en cas de refus, le formulaire est réaffiché avec la saisie, un résumé d'erreurs en tête (`role="alert"`, liens vers les champs), et le message sous chaque champ concerné (`aria-describedby`, `aria-invalid="true"`). Correspondance `details.field` -> champ : `title`, `category`, `due_date`, `estimated_minutes`, `description` identiques; `recurrence`, `recurrence.interval`, `recurrence.unit` -> groupe « Périodicité » (`recurrence_requires_due_date` affiché sous la date butée **et** sous la périodicité, au résumé une fois). Tout champ inconnu retombe dans le résumé seul.
+
+**Messages** (`Messages`) : table `code -> texte` pour les cas où le texte du portail diffère de celui de l'exception; **repli** : le message français de l'exception (`DomainError::getMessage()`, déjà sans valeur saisie). Parce que certains messages de l'exception citent des codes techniques (`L'état doit être todo, in_progress ou done.`, `Unité attendue : day, week...`, `Date attendue au format AAAA-MM-JJ.`), le portail fournit son texte pour au moins : `due_date_invalid` (« Date invalide. »), `recurrence_unit_invalid`, `status_invalid`, `field_unknown`, `field_type_invalid`. Messages des erreurs de B2 au tableau B2. Le formulaire ne peut normalement pas produire ces codes (contrôles natifs); ils servent aux saisies falsifiées ou aux navigateurs sans type `date`.
+
+**Détail** : titre (h1), catégorie, état (libellé), date butée, périodicité (« Tous les 2 mois »), durée (« 90 minutes »), description, date de clôture si `done` (Europe/Paris, `JJ/MM/AAAA HH:MM`), création et dernière modification (idem), liste des actions requises (titre en lien vers `/tasks/{id}`, état de chaque action). **État des actions requises** : `Task.required_actions` ne contient que `{id, title}`; en B1 le portail en lit l'état dans l'index d'un `list()` (une requête, volume d'un outil personnel). Alternative, **ajout compatible au contrat partagé** à valider si B2 le justifie : ajouter `status` aux éléments de `required_actions` (REST et MCP en bénéficient; les tests REST qui comparent la forme exacte seraient à mettre à jour). Liens « Modifier » et « Supprimer ». B1 n'offre ni changement d'état ni gestion des liens : l'état est affiché seulement.
+
+**Confirmation de suppression** : page nommant la tâche (titre échappé), bouton « Supprimer définitivement » (formulaire `POST` avec `_csrf`) et lien « Annuler » vers le détail. Le refus métier (`task_is_required`) réaffiche cette page en 409 avec « Suppression impossible : cette tâche est requise par : » suivi de la liste (titre en lien), la tâche restant intacte.
+
+**Libellés et formats** (`Labels`, présentation uniquement) : états `todo`/`in_progress`/`done` -> « À faire »/« En cours »/« Terminée »; unités -> jour(s), semaine(s), mois, année(s) (affichage « Tous les N <unité> », N = 1 : « Chaque <unité> » facultatif, au Developer); date `AAAA-MM-JJ` -> `JJ/MM/AAAA` par découpage de chaîne (aucun fuseau, aucune conversion); horodatage ISO UTC -> `DateTimeImmutable` -> fuseau `Europe/Paris` -> `JJ/MM/AAAA HH:MM`; durée : minutes entières telles que stockées. Valeur de base jamais modifiée.
+
+**Flash** : un message (`{type: success|error, text, link?: {label, path}}`) écrit avant la redirection, lu et supprimé au premier affichage, rendu dans un élément `role="status"` (ou `role="alert"` pour une erreur), échappé. Le titre de la tâche inséré dans un message est échappé comme toute donnée.
+
+### Conventions de test B1 (proposé)
+
+- `tests/Integration/PortalTasksTest` : PostgreSQL réel (comme `RestTasksCrudTest`), `Bootstrap::kernel($config, new ArraySession())`, appels `Kernel::handle(new Request(...))` sans serveur. Les `POST` utilisent `Request::$form` et le jeton lu dans la page de formulaire précédente.
+- Cas : parcours (liste vide -> créer -> détail -> modifier -> liste -> supprimer); création minimale et complète (valeurs conservées, formats `JJ/MM/AAAA`, Europe/Paris, durée); un test par code de validation affiché près du champ avec saisie conservée et statut 422; effacement de `due_date` d'une périodique refusé (message, tâche inchangée); suppression refusée 409 avec titres des dépendants (tâche et lien intacts) puis réussie après retrait du lien (créé par `TaskService`); confirmation de suppression sans suppression au `GET`; filtres (`status`, `category`, ET, `hide_done`, valeur vide, valeur invalide 422); tâche inconnue et identifiant invalide : 404 HTML; **échappement** : titre, description et message flash `<script>alert(1)</script>` rendus en texte dans liste, détail, formulaire (valeur d'attribut `"` comprise), confirmation; **parité avec REST** (critère 10) : une même entrée refusée par REST (`title` blanc, catégorie `pro`, périodicité sans date) l'est par le portail avec le même `code`; **sécurité** : `POST` sans jeton ou avec jeton faux : 403 et aucune écriture; `Origin` étranger : 403; `Host` hors liste : 403; en-têtes CSP/`nosniff`/`no-store` présents; `GET` n'écrit jamais; 500 sans trace ni message PDO (dépôt qui lève une `PDOException`) et 503 sans détail.
+- Unitaires : `Labels` (dates, fuseau d'été et d'hiver, périodicité), `TaskForm` (vide -> `null`, chiffres -> `int`, périodicité), garde d'échappement des gabarits, `PathId`.
+- Non vérifiable par ces tests : rendu navigateur, clavier, contraste, focus (liste de contrôle manuelle, critère 12), `php -S` avec `public/assets/portal.css`, cookies de session réels.
+
+### B2 — conception (proposé, à valider; B1 elle-même n'est pas encore validée)
+
+Statuts : PW1 à PW12 **validés**; tout ce qui suit est **proposé**. B2 **dépend de B1** (garde Host/Origin/CSRF, session et flash, `View`, `Labels`, `Messages`, `DomainStatus`, `PathId`, page de détail) : elle n'est démarrable qu'après validation et livraison de B1. Pas de migration, pas de nouveau cas d'usage ni de nouvelle dépendance : `addRequiredAction`, `removeRequiredAction`, `patch`/`changeStatus`, `list`, `get` existent. Les formulaires de B2 sont des `POST` `application/x-www-form-urlencoded` avec `_csrf`, contrôlés par la garde de B1 (403 si jeton, `Origin` ou `Host` invalide, rien n'est exécuté).
+
+**Routes** (identifiant de chemin invalide ou tâche inconnue : 404 HTML comme en B1; méthode non prévue : 405 + `Allow`) :
+
+| Méthode, chemin | Champs | Cas d'usage | Succès (303, PRG) | Refus (page réaffichée avec le statut indiqué) |
+|---|---|---|---|---|
+| `POST /tasks/{id}/required-actions` | `required_id` | `get` (avant, pour le doublon) puis `addRequiredAction` | vers `/tasks/{id}`, flash « Action requise ajoutée. » (ou « Cette action requise était déjà présente. », voir plus bas) | 422 `required_task_not_found`, `dependency_self`, ou choix absent; 409 `dependency_cycle`; 404 tâche |
+| `POST /tasks/{id}/required-actions/{requiredId}/delete` | — | `removeRequiredAction` | vers `/tasks/{id}`, flash « Action requise retirée. » (idempotent : même message si le lien n'existait plus) | 404 tâche |
+| `POST /tasks/{id}/status` | `status` | `changeStatus` | vers `/tasks/{id}`, flash selon la transition (voir plus bas) | 409 `status_transition_invalid`, `required_actions_not_done`, `next_due_date_out_of_range`; 422 `field_type_invalid`/`status_invalid` (valeur falsifiée); 404 |
+| `GET /tasks/{id}/reopen` | — | `get` | 200 page d'avertissement (PW9) si la tâche est périodique **et** `done`; sinon 303 vers `/tasks/{id}` | 404 |
+
+Le portail n'appelle `changeStatus` que pour `POST /tasks/{id}/status` (jamais `patch` : la règle « `status` seul » ne le concerne pas). `status` absent est transmis comme `null` (le cas d'usage répond `field_type_invalid`).
+
+**Réaffichage après refus** : pas de redirection; la page de détail est rendue avec le statut HTTP de l'erreur (même table `Http\DomainStatus` que REST), un bloc d'erreur `role="alert"` en tête de la section concernée (« Actions requises » ou « État »), la saisie du formulaire de lien conservée. Aucune écriture n'a eu lieu (tâche et `updated_at` inchangés).
+
+**Actions requises** (section de la page de détail) :
+- Liste : chaque action requise = titre en lien vers `/tasks/{id}`, état en libellé, bouton « Retirer » (formulaire `POST`, texte accessible « Retirer <titre> ») sans page de confirmation (opération réversible et idempotente).
+- Formulaire d'ajout : liste déroulante `required_id` alimentée par **toutes** les tâches (`list()`, PW8 option A) sous la forme « titre — état », première option vide « Choisir une tâche… ». La tâche elle-même est listée (suffixe « (cette tâche) » : présentation), car exclure d'avance des candidats est l'option B écartée; les refus restent ceux du cas d'usage.
+- Choix absent, vide ou non entier (`PathId`) : le portail ne peut pas appeler le cas d'usage; il répond 422 avec un message propre au portail, `Choisissez une tâche.` (erreur de forme du formulaire, pas une règle métier). Un identifiant entier inexistant donne `required_task_not_found` du service.
+- **Doublon = succès, pas refus** (idempotence **validée** pour la couche commune, REST l'applique) : l'ajout répété réussit sans lien en double. Pour informer, le portail lit la tâche (`get`) avant l'appel; si `required_id` figure déjà dans `required_actions`, le flash dit « Cette action requise était déjà présente. ». Information de présentation seulement (aucune décision); l'écart avec la demande « refus doublon » est volontaire et à signaler à l'utilisateur.
+- Aucun avertissement quand on ajoute une action requise non terminée à une tâche `done` (PW8, Q11).
+
+**Changement d'état** (section « État » de la page de détail) :
+- Boutons : un formulaire `POST /tasks/{id}/status` par cible de `TaskStatus::from($task['status'])->allowedTargets()` (table unique du domaine, non recopiée), champ caché `status` = code. Libellés selon (source, cible) : `todo -> in_progress` « Démarrer »; `in_progress -> done` « Terminer »; `in_progress -> todo` « Remettre à faire »; `done -> todo` « Rouvrir ». Aucun bouton pour une transition refusée. L'état courant est affiché en texte.
+- Le portail ne prédit pas les refus (pas de contrôle des actions requises avant d'afficher « Terminer ») : c'est le cas d'usage qui arbitre, y compris en cas de page périmée (deux onglets).
+- Succès, flash (`type` = success) : démarrage « Tâche démarrée. »; remise à faire « Tâche remise à faire. »; terminaison sans occurrence « Tâche terminée. »; **terminaison d'une périodique** (`next_occurrence` non `null`, PW7) « Tâche terminée. Prochaine occurrence : « <titre> », échéance <JJ/MM/AAAA>. » avec lien « Voir la prochaine occurrence » vers `/tasks/{id de l'occurrence}`; titre et date échappés/formatés par `Labels`; réouverture « Tâche rouverte. ».
+- Refus, messages français (`Messages`) :
+  - `status_transition_invalid` (409) : « Ce changement d'état n'est plus possible : la tâche est « <libellé from> » » (libellés tirés de `details.from`/`details.to`), tâche inchangée.
+  - `required_actions_not_done` (409) : « Terminaison impossible : ces actions requises ne sont pas terminées : » suivi de la liste (`details.required_actions`, titre en lien et état), tâche inchangée, aucune occurrence créée.
+  - `next_due_date_out_of_range` (409) : « La prochaine échéance dépasserait le 31/12/9999 : la tâche ne peut pas être terminée. », tâche inchangée.
+  - `dependency_self` : « Une tâche ne peut pas se requérir elle-même. »; `dependency_cycle` : « Ajouter cette action requise créerait un cycle. »; `required_task_not_found` : « Cette action requise n'existe plus. »; `task_not_found` : page 404.
+
+**Réouverture et avertissement (PW9) — proposé, à valider.**
+- Le bouton « Rouvrir » d'une tâche `done` **non périodique** est un formulaire `POST /tasks/{id}/status` direct. Pour une tâche `done` **périodique**, c'est un lien vers `GET /tasks/{id}/reopen`, page qui nomme la tâche et affiche : « Cette tâche est périodique. Une occurrence suivante a pu être créée quand vous l'avez terminée; la rouvrir peut créer un doublon. » avec un bouton « Rouvrir quand même » (formulaire `POST /tasks/{id}/status`, `status=todo`) et un lien « Annuler » vers le détail. Aucun blocage; l'étape n'est pas une règle du serveur (un `POST` direct fonctionne), c'est une protection de l'interface.
+- **Écart avec PW9 tel que formulé** (« déjà renouvelée ») : aucune filiation entre occurrence et source n'existe (Q3/Q4), donc l'avertissement vaut pour toute périodique terminée, qu'une occurrence existe ou non. Détecter par similarité (titre, catégorie, échéance attendue) est écarté : heuristique fragile qui recopierait la règle de calcul du service.
+- **Alternative : filiation** (décision produit, à ne pas lancer sans l'utilisateur). Migration `0003` additive : colonne `tasks.previous_occurrence_id bigint NULL REFERENCES tasks(id) ON DELETE SET NULL` (+ index), renseignée par `changeStatus` lors de la création de l'occurrence; `Task` gagnerait `next_occurrence_id` (ajout compatible REST/MCP); requête et tests en plus dans `TaskRepository`/`TaskService`. Coûts : une migration (et son test de schéma, rejouabilité), une modification de la couche commune, **remise en cause de la décision Q4 « pas de lien de filiation »** (validée par délégation) et impossibilité de renseigner les occurrences déjà créées (aucune donnée de production aujourd'hui, donc coût réel faible). Gain : l'avertissement ne s'affiche que si une occurrence existe réellement, et le détail peut la lier. Sans effet sur la conception des routes ci-dessus (seule la condition d'affichage de `/reopen` change).
+
+**`status` dans `required_actions` : non nécessaire pour B2.** La page de détail et le formulaire d'ajout s'appuient sur le même `list()` indexé par `id` (une requête, déjà prévue en B1) pour l'état des actions requises et la liste des candidats. L'ajout de `status` aux éléments `{id,title}` de `required_actions` serait une modification **d'un contrat partagé** (REST, futur MCP; ajout compatible, tests à la forme exacte de `Task` à mettre à jour) : signalée, **non demandée**, à revoir seulement si le MCP ou REST en a besoin.
+
+**Impact sur B1** (pages existantes, sans changement de route) :
+- Détail : la section « Actions requises » (lecture seule en B1) gagne les boutons « Retirer » et le formulaire d'ajout; une section « État » apparaît (état en texte + boutons). Pour que B2 n'ajoute que des ajouts, B1 découpe dès maintenant le gabarit de détail en partiels (`task_required_actions.php`, `task_status.php`, B1 n'affichant que la lecture).
+- Liste : inchangée (aucune action d'état dans la liste; les terminaisons se font depuis le détail). `hide_done` et le filtre `status` de B1 prennent leur sens avec les changements d'état.
+- Flash : la structure de B1 (`{type, text, link?}`) suffit; B2 n'y ajoute rien. Suppression : inchangée (`task_is_required` s'applique aussi aux tâches `done`; après une terminaison périodique les liens restent sur l'ancienne occurrence, Q3).
+- `Messages` et `Labels` : ajout des textes ci-dessus et des libellés de boutons (présentation).
+
+**Tests attendus (B2, avant le code)** — `tests/Integration/PortalTasksActionsTest` (PostgreSQL réel, `ArraySession`, comme B1; données créées par `TaskService`) :
+- Liens : ajout puis détail listant la tâche requise (titre, état, lien); cycles A→B→A et A→B→C→A : 409, message « créerait un cycle », aucun lien créé; auto-lien : 422, message; `required_id` inexistant : 422; choix vide ou `abc` : 422 « Choisissez une tâche. » sans appel au service; doublon : 303, flash « déjà présente », un seul lien, `updated_at` inchangé; retrait existant et absent : 303, flash identique; tâche inconnue : 404; ajout d'une action non terminée à une `done` accepté sans avertissement.
+- États : les boutons affichés pour chacun des trois états correspondent exactement à `allowedTargets()`; chaque transition permise (4) : 303 et flash, état et `completed_at` visibles au détail; transitions refusées (`todo -> done`, `done -> in_progress`, même état, par `POST` direct) : 409, message avec libellés, tâche et `updated_at` inchangés; terminaison avec actions requises non terminées : 409, liste exacte (titres en liens, états), aucune occurrence; avec toutes `done` ou sans action : réussit; **périodique** : flash avec titre, échéance `JJ/MM/AAAA` (31/01 + 1 mois = 28/02) et lien vers l'occurrence, laquelle existe, `todo`, sans lien; non périodique : « Tâche terminée. » seul, une seule tâche; dépassement `9999-12-31` : 409, message, tâche inchangée; deuxième terminaison : 409 `status_transition_invalid`, une seule occurrence; `status` falsifié (`foo`, absent) : 422.
+- Réouverture : `GET /reopen` d'une périodique `done` : 200 avec avertissement et bouton; non périodique ou non `done` : 303; `POST` direct `status=todo` fonctionne sans passer par la page (l'avertissement n'est pas une règle); `completed_at` effacé.
+- Transverses : 403 sans jeton, `Origin` étranger ou `Host` hors liste, aucune écriture; aucun `GET` n'écrit; échappement d'un titre `<script>` dans les messages de refus, le flash de terminaison et la liste du `<select>`; parité REST : mêmes `code` refusés pour les mêmes entrées (cycle, transition, prérequis); 500/503 sans détail technique.
+- Non vérifiable : rendu, clavier, focus, lecture d'écran des blocs `role="alert"` (liste de contrôle manuelle).
+
+**Ordre d'implémentation et dépendances.** (0) B1 livrée et validée (préalable : garde, session/flash, `View`, `Labels`, `Messages`, `DomainStatus`, `PathId`, détail en partiels). (1) Section « État » : `POST /tasks/{id}/status`, boutons, flash de terminaison, refus 409 (les tests de transitions et de terminaison d'abord). (2) Actions requises : ajout, retrait, refus et doublon. (3) Réouverture avec avertissement (`/reopen`). (4) Transverses, README (parcours du portail), liste de contrôle d'accessibilité. Chaque étape est indépendante de la suivante et peut être commitée seule; (1) et (2) ne partagent que le gabarit de détail.
+
+### Impact (analyse)
+
+- **Schéma, migrations, dépendances Composer : aucun.** PHP natif (`session`, `random_bytes`, `hash_equals`, `DateTimeImmutable`, `mbstring` déjà en contrainte).
+- **Consommateurs touchés** : `PortalTest` (page statique `GET /` : 200 + « L'application fonctionne. ») devient faux, car `GET /` redirige vers `/tasks` (le Developer le remplace par un test de redirection). Conséquence sur le squelette : le portail n'appelle plus `Diagnostic::ping()` (critère 7 du squelette ne vaut plus que pour REST et MCP); `/api/v1/health` reste le diagnostic. `Bootstrap::kernel` et `Request` : ajouts à paramètre facultatif (tests `HttpTestCase`, `RestTasksCrudTest` et autres appels existants valides). `RestAdapter` : extraction de `DomainStatus` et `PathId` sans changement de comportement (suite REST rejouée telle quelle). `Config` : une variable facultative de plus (`PORTAL_ALLOWED_HOSTS`), donc `ConfigTest` et `.env.example` à étendre.
+- **Rupture** : aucune pour REST/MCP; le contenu de `GET /` change (page de squelette sans consommateur réel).
+- **Sécurité** : voir « Garde de chaque requête portail ». Rappel : sans authentification, toute exposition (réseau local, déploiement) donne lecture et suppression de toutes les données; `bin/start` lie déjà `127.0.0.1`.
+- **Hébergement** : sessions, racine `public/`, réécriture d'URL, service des fichiers statiques et variables d'environnement restent **non vérifiés** (tableau AlwaysData); aucun choix de B1 n'en dépend pour le local. Le déploiement, qui exige de toute façon l'authentification, les revérifiera. `README.md` et `bin/start` : ajouter l'adresse du portail (`http://127.0.0.1:8080/`).
+
+### À faire valider avant implémentation
+
+1. **B1 sous la forme décrite** : routes et statuts, formulaire, garde Host/Origin/CSRF, en-têtes, session native avec interface `Session`.
+2. **`GET /` redirige vers `/tasks`** et le test du squelette est remplacé (le portail n'appelle plus `Diagnostic`).
+3. **Contrôle de `Host`** et variable `PORTAL_ALLOWED_HOSTS` (ajout non demandé par PW10; défaut sans configuration).
+4. **`hide_done` en filtre de présentation** dans le portail (PW6) plutôt qu'un filtre d'exclusion ajouté à `TaskService::list` (contrat partagé REST/MCP).
+5. **État des actions requises** lu par `list()` en B1; ajout de `status` à `required_actions` seulement si B2 ou MCP le demande.
+6. **Extractions `Http\DomainStatus` et `Http\PathId`** dans `RestAdapter` (comportement inchangé).
+7. **PW9, avertissement de réouverture** : valable pour toute périodique terminée, et non « déjà renouvelée » (voir B2); ou filiation par migration (décision produit).
+8. **B2** (après B1) : routes et flash décrits, doublon de lien traité en succès avec information (idempotence validée), pas de `status` ajouté à `required_actions`, réouverture par page de confirmation.
 
 ## Dépendances Composer (proposé)
 

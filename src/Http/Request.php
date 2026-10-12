@@ -9,6 +9,7 @@ final class Request
     /**
      * @param array<string,string> $headers noms en minuscules
      * @param array<string,mixed> $query paramètres de la chaîne de requête (valeurs chaîne ou tableau)
+     * @param array<string,mixed> $form champs d'un formulaire `application/x-www-form-urlencoded` (portail)
      */
     public function __construct(
         public readonly string $method,
@@ -16,6 +17,7 @@ final class Request
         public readonly array $headers = [],
         public readonly string $body = '',
         public readonly array $query = [],
+        public readonly array $form = [],
     ) {
     }
 
@@ -52,6 +54,7 @@ final class Request
             $headers,
             $body === false ? '' : $body,
             $query,
+            $_POST,
         );
     }
 }
