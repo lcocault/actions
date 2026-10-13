@@ -97,6 +97,24 @@ final class McpToolsTest extends HttpTestCase
         self::assertStringContainsString('change_task_status', $tools['update_task']['description']);
     }
 
+    public function testProjectAndConclusionsSchemas(): void
+    {
+        $tools = $this->tools();
+        foreach (['create_task', 'update_task'] as $name) {
+            $props = $tools[$name]['inputSchema']['properties'];
+            self::assertSame(['string', 'null'], $props['project']['type'], $name);
+            self::assertSame([...TaskValidator::PROJECTS, null], $props['project']['enum'], $name);
+            self::assertSame(['string', 'null'], $props['conclusions']['type'], $name);
+            self::assertNotContains('project', $tools[$name]['inputSchema']['required'], $name);
+            self::assertNotContains('conclusions', $tools[$name]['inputSchema']['required'], $name);
+        }
+        $filter = $tools['list_tasks']['inputSchema']['properties']['project'];
+        self::assertSame('string', $filter['type']);
+        self::assertSame(TaskValidator::PROJECTS, $filter['enum'], 'sans null : un filtre n\'a pas de valeur « aucun »');
+        self::assertSame(['id', 'status'], array_keys($tools['change_task_status']['inputSchema']['properties']));
+        self::assertStringContainsString('projet', $tools['list_tasks']['description']);
+    }
+
     public function testAnnotations(): void
     {
         $tools = $this->tools();

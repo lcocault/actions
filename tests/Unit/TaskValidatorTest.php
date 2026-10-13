@@ -37,6 +37,7 @@ final class TaskValidatorTest extends TestCase
         self::assertSame([
             'title' => 'Payer', 'category' => 'Pro', 'due_date' => null,
             'recurrence' => null, 'estimated_minutes' => null, 'description' => null,
+            'project' => null, 'conclusions' => null,
         ], $this->create(['title' => 'Payer', 'category' => 'Pro']));
     }
 
@@ -222,6 +223,7 @@ final class TaskValidatorTest extends TestCase
         return [
             'title' => 'a', 'category' => 'Pro', 'due_date' => '2026-10-11',
             'recurrence' => ['interval' => 1, 'unit' => 'day'], 'estimated_minutes' => 5, 'description' => 'd',
+            'project' => 'OPF', 'conclusions' => 'c',
         ];
     }
 
@@ -254,5 +256,67 @@ final class TaskValidatorTest extends TestCase
         $this->assertRefused('field_type_invalid', fn () => (new TaskValidator())->validateUpdate($this->current(), ['title' => null]), 'title');
         $this->assertRefused('field_unknown', fn () => (new TaskValidator())->validateUpdate($this->current(), ['id' => 3]), 'id');
         $this->assertRefused('field_unknown', fn () => (new TaskValidator())->validateUpdate($this->current(), ['required_actions' => []]), 'required_actions');
+    }
+
+    public function testEveryProjectOfTheClosedListIsAcceptedAndNullClears(): void
+    {
+        $v = new TaskValidator();
+        self::assertSame(['MS-HR', 'Jardin/Maison', 'OPF', 'Erendil'], TaskValidator::PROJECTS);
+        foreach (TaskValidator::PROJECTS as $project) {
+            self::assertSame($project, $this->create(['title' => 't', 'category' => 'Pro', 'project' => $project])['project']);
+        }
+        self::assertNull($this->create(['title' => 't', 'category' => 'Pro', 'project' => null])['project']);
+        self::assertNull($v->validateUpdate($this->current(), ['project' => null])['project']);
+        self::assertSame('MS-HR', $v->validateUpdate($this->current(), ['project' => 'MS-HR'])['project']);
+        self::assertSame('OPF', $v->validateUpdate($this->current(), ['title' => 'x'])['project'], 'clé absente : inchangé');
+    }
+
+    public function testProjectOutsideTheListIsRefusedWithoutNormalisation(): void
+    {
+        foreach (['', 'ms-hr', 'MSHR', 'jardin/maison', 'JARDIN/MAISON', 'Autre', 'MS-HR ', ' OPF', "OPF\n"] as $value) {
+            $this->assertRefused('project_invalid', fn () => $this->create(['title' => 't', 'category' => 'Pro', 'project' => $value]), 'project');
+            $this->assertRefused('project_invalid', fn () => (new TaskValidator())->validateUpdate($this->current(), ['project' => $value]), 'project');
+        }
+        try {
+            $this->create(['title' => 't', 'category' => 'Pro', 'project' => 'x']);
+        } catch (InvalidTask $e) {
+            self::assertSame('Le projet doit être MS-HR, Jardin/Maison, OPF ou Erendil.', $e->getMessage());
+        }
+    }
+
+    public function testProjectOfWrongTypeIsRefused(): void
+    {
+        foreach ([1, true, ['OPF'], 1.5] as $value) {
+            $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => 't', 'category' => 'Pro', 'project' => $value]), 'project');
+        }
+    }
+
+    public function testConclusionsFollowTheRulesOfDescription(): void
+    {
+        $v = new TaskValidator();
+        self::assertNull($this->create(['title' => 't', 'category' => 'Pro', 'conclusions' => null])['conclusions']);
+        self::assertSame('', $this->create(['title' => 't', 'category' => 'Pro', 'conclusions' => ''])['conclusions']);
+        $long = str_repeat("é\n", 20000);
+        self::assertSame($long, $this->create(['title' => 't', 'category' => 'Pro', 'conclusions' => $long])['conclusions']);
+        self::assertNull($v->validateUpdate($this->current(), ['conclusions' => null])['conclusions']);
+        self::assertSame('c', $v->validateUpdate($this->current(), ['title' => 'x'])['conclusions']);
+        $this->assertRefused('text_invalid', fn () => $this->create(['title' => 't', 'category' => 'Pro', 'conclusions' => "a\0b"]), 'conclusions');
+        $this->assertRefused('text_invalid', fn () => $this->create(['title' => 't', 'category' => 'Pro', 'conclusions' => "\xff"]), 'conclusions');
+        $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => 't', 'category' => 'Pro', 'conclusions' => 5]), 'conclusions');
+        $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => 't', 'category' => 'Pro', 'conclusions' => ['a']]), 'conclusions');
+    }
+
+    public function testProjectFilter(): void
+    {
+        $v = new TaskValidator();
+        self::assertSame(['project' => 'Jardin/Maison'], $v->validateFilters(['project' => 'Jardin/Maison']));
+        self::assertSame(['category' => 'Pro', 'project' => 'OPF'], $v->validateFilters(['category' => 'Pro', 'project' => 'OPF']));
+        foreach (['', 'opf', 'Autre'] as $value) {
+            $this->assertRefused('project_invalid', fn () => $v->validateFilters(['project' => $value]), 'project');
+        }
+        foreach ([null, 3, ['OPF']] as $value) {
+            $this->assertRefused('field_type_invalid', fn () => $v->validateFilters(['project' => $value]), 'project');
+        }
+        $this->assertRefused('field_unknown', fn () => $v->validateFilters(['conclusions' => 'x']), 'conclusions');
     }
 }

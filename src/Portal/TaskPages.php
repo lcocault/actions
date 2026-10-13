@@ -10,6 +10,7 @@ use Actions\Application\TaskIsRequired;
 use Actions\Application\TaskNotFound;
 use Actions\Application\TaskService;
 use Actions\Application\TaskStatus;
+use Actions\Application\TaskValidator;
 use Actions\Http\DomainStatus;
 use Actions\Http\PathId;
 use Actions\Http\Request;
@@ -29,6 +30,8 @@ final class TaskPages
         'due_date' => 'due_date',
         'estimated_minutes' => 'estimated_minutes',
         'description' => 'description',
+        'project' => 'project',
+        'conclusions' => 'conclusions',
         'recurrence' => 'recurrence',
         'recurrence.interval' => 'recurrence',
         'recurrence.unit' => 'recurrence',
@@ -40,6 +43,8 @@ final class TaskPages
         'due_date' => 'f-due_date',
         'estimated_minutes' => 'f-estimated_minutes',
         'description' => 'f-description',
+        'project' => 'f-project',
+        'conclusions' => 'f-conclusions',
         'recurrence' => 'f-recurrence_interval',
     ];
 
@@ -51,9 +56,9 @@ final class TaskPages
 
     public function list(Request $request): Response
     {
-        $filters = ['status' => '', 'category' => '', 'hide_done' => ($request->query['hide_done'] ?? '') === '1'];
+        $filters = ['status' => '', 'category' => '', 'project' => '', 'hide_done' => ($request->query['hide_done'] ?? '') === '1'];
         $criteria = [];
-        foreach (['status', 'category'] as $name) {
+        foreach (['status', 'category', 'project'] as $name) {
             $value = $request->query[$name] ?? '';
             if ($value === '') { // « Tous » : filtre absent (REST, lui, refuse la valeur vide)
                 continue;
@@ -74,7 +79,8 @@ final class TaskPages
             'tasks' => $tasks,
             'filters' => $filters,
             'statuses' => Labels::statuses(),
-            'isFiltered' => $filters['status'] !== '' || $filters['category'] !== '' || $filters['hide_done'],
+            'isFiltered' => $filters['status'] !== '' || $filters['category'] !== '' || $filters['project'] !== '' || $filters['hide_done'],
+            'projects' => TaskValidator::PROJECTS,
         ]);
     }
 
@@ -311,6 +317,7 @@ final class TaskPages
             'summary' => $summary,
             'errors' => $errors,
             'units' => Labels::formUnits(),
+            'projects' => TaskValidator::PROJECTS,
             'csrf' => $this->renderer->csrf(),
         ]);
     }

@@ -27,10 +27,10 @@ final class TaskController
         return Response::json(201, $task, ['Location' => $this->basePath . '/api/v1/tasks/' . $task['id']]);
     }
 
-    /** Seuls les filtres `status` et `category` sont transmis; les autres paramètres sont ignorés. */
+    /** Seuls les filtres `status`, `category` et `project` sont transmis; les autres paramètres sont ignorés. */
     public function list(Request $request): Response
     {
-        $filters = array_intersect_key($request->query, ['status' => true, 'category' => true]);
+        $filters = array_intersect_key($request->query, ['status' => true, 'category' => true, 'project' => true]);
 
         return Response::json(200, $this->tasks->list($filters));
     }

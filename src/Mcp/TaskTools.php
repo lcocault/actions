@@ -96,6 +96,8 @@ final class TaskTools
             ],
             'estimated_minutes' => ['type' => ['integer', 'null'], 'minimum' => 1, 'description' => 'Estimation de durée en minutes, ou null pour l\'effacer.'],
             'description' => ['type' => ['string', 'null'], 'description' => 'Description ou contexte, ou null pour l\'effacer.'],
+            'project' => ['type' => ['string', 'null'], 'enum' => [...TaskValidator::PROJECTS, null], 'description' => 'Projet (liste fermée), ou null pour l\'effacer.'],
+            'conclusions' => ['type' => ['string', 'null'], 'description' => 'Conclusions (ce qui a été appris ou décidé), ou null pour l\'effacer.'],
         ];
         $status = ['type' => 'string', 'enum' => TaskStatus::codes()];
         $requiredLink = [
@@ -108,10 +110,11 @@ final class TaskTools
             self::tool('get_task', 'Lit une tâche par son identifiant, avec ses actions requises (tâches à réaliser avant).', ['id' => $id], ['id'], ['readOnlyHint' => true]),
             self::tool(
                 'list_tasks',
-                'Liste les tâches (date butée croissante, sans date en dernier). Sans pagination : filtrer par état (par exemple todo) ou par catégorie pour limiter la taille de la réponse.',
+                'Liste les tâches (date butée croissante, sans date en dernier). Sans pagination : filtrer par état (par exemple todo), par catégorie ou par projet pour limiter la taille de la réponse.',
                 [
                     'status' => $status + ['description' => 'Filtre sur l\'état.'],
                     'category' => ['type' => 'string', 'enum' => TaskValidator::CATEGORIES, 'description' => 'Filtre sur la catégorie.'],
+                    'project' => ['type' => 'string', 'enum' => TaskValidator::PROJECTS, 'description' => 'Filtre exact sur le projet.'],
                 ],
                 [],
                 ['readOnlyHint' => true],

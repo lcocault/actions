@@ -9,7 +9,7 @@ namespace Actions\Application;
  * Les règles métier sont ici (validation) et en base (cycles, contraintes); les adaptateurs ne les répètent pas.
  *
  * Forme d'une tâche (`Task`) : id, title, category, due_date, recurrence{interval,unit}|null,
- * estimated_minutes, description, required_actions[{id,title}], status (todo|in_progress|done),
+ * estimated_minutes, description, project|null, conclusions|null, required_actions[{id,title}], status (todo|in_progress|done),
  * completed_at (ISO 8601 UTC|null), created_at, updated_at.
  */
 final class TaskService
@@ -46,7 +46,7 @@ final class TaskService
     }
 
     /**
-     * Filtres facultatifs `status` et `category` (une valeur chacun, combinés en ET).
+     * Filtres facultatifs `status`, `category` et `project` (une valeur chacun, combinés en ET).
      *
      * @param array<string,mixed> $filters
      * @return list<array<string,mixed>>
@@ -128,6 +128,8 @@ final class TaskService
                     'recurrence' => $current['recurrence'],
                     'estimated_minutes' => $current['estimated_minutes'],
                     'description' => $current['description'],
+                    'project' => $current['project'], // recopié (F7)
+                    'conclusions' => null,            // propres à chaque occurrence
                 ]));
             }
 

@@ -19,6 +19,15 @@
 <?php endforeach; ?>
     </select>
   </div>
+  <div class="field">
+    <label for="f-project">Projet</label>
+    <select id="f-project" name="project">
+      <option value="">Tous</option>
+<?php foreach ($projects as $project): ?>
+      <option value="<?= $e($project) ?>"<?= $e($filters['project'] === $project ? ' selected' : '') ?>><?= $e($project) ?></option>
+<?php endforeach; ?>
+    </select>
+  </div>
   <div class="field check">
     <input type="checkbox" id="f-hide-done" name="hide_done" value="1"<?= $e($filters['hide_done'] ? ' checked' : '') ?>>
     <label for="f-hide-done">Masquer les tâches terminées</label>
@@ -34,7 +43,8 @@
 <?php if ($isFiltered): ?>
 <p class="filter-summary">Filtres actifs :
   état <strong><?= $e($filters['status'] === '' ? 'tous' : \Actions\Portal\Labels::status($filters['status'])) ?></strong>,
-  catégorie <strong><?= $e($filters['category'] === '' ? 'toutes' : $filters['category']) ?></strong><?= $e($filters['hide_done'] ? ', tâches terminées masquées' : '') ?>.</p>
+  catégorie <strong><?= $e($filters['category'] === '' ? 'toutes' : $filters['category']) ?></strong>,
+  projet <strong><?= $e($filters['project'] === '' ? 'tous' : $filters['project']) ?></strong><?= $e($filters['hide_done'] ? ', tâches terminées masquées' : '') ?>.</p>
 <?php endif; ?>
 
 <?php if ($tasks === []): ?>
@@ -46,6 +56,7 @@
     <tr>
       <th scope="col">Titre</th>
       <th scope="col">Catégorie</th>
+      <th scope="col">Projet</th>
       <th scope="col">État</th>
       <th scope="col">Date butée</th>
       <th scope="col">Périodicité</th>
@@ -56,6 +67,7 @@
     <tr>
       <td><a href="<?= $url('/tasks/' . $task['id']) ?>"><?= $e($task['title']) ?></a></td>
       <td><?= $e($task['category']) ?></td>
+      <td><?= $e($task['project'] ?? '') ?></td>
       <td><span class="status status-<?= $e($task['status']) ?>"><?= $e(\Actions\Portal\Labels::status($task['status'])) ?></span></td>
       <td><?= $e(\Actions\Portal\Labels::date($task['due_date'])) ?></td>
       <td><?= $e(\Actions\Portal\Labels::recurrence($task['recurrence'])) ?></td>

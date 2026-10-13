@@ -11,6 +11,8 @@
   <dl>
     <dt>Catégorie</dt>
     <dd><?= $e($task['category']) ?></dd>
+    <dt>Projet</dt>
+    <dd><?= $e($task['project'] ?? 'Aucun') ?></dd>
     <dt>Date butée</dt>
     <dd><?= $e($task['due_date'] === null ? 'Aucune' : \Actions\Portal\Labels::date($task['due_date'])) ?></dd>
     <dt>Périodicité</dt>
@@ -19,6 +21,8 @@
     <dd><?= $e($task['estimated_minutes'] === null ? 'Non renseignée' : \Actions\Portal\Labels::duration($task['estimated_minutes'])) ?></dd>
     <dt>Description</dt>
     <dd class="multiline"><?= $e($task['description'] ?? 'Aucune') ?></dd>
+    <dt>Conclusions</dt>
+    <dd class="multiline"><?= $e($task['conclusions'] ?? 'Aucune') ?></dd>
     <dt>Créée le</dt>
     <dd><?= $e(\Actions\Portal\Labels::dateTime($task['created_at'])) ?></dd>
     <dt>Modifiée le</dt>

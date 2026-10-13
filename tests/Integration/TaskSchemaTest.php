@@ -20,7 +20,7 @@ final class TaskSchemaTest extends DbTestCase
         parent::setUp();
         $this->pdo->exec('DROP TABLE IF EXISTS task_dependencies, tasks, schema_migrations CASCADE');
         $this->pdo->exec('DROP FUNCTION IF EXISTS task_dependencies_check_cycle()');
-        self::assertSame(['0001_tasks_and_dependencies', '0002_task_status'], (new Migrator($this->pdo, self::MIGRATIONS))->migrate());
+        self::assertSame(['0001_tasks_and_dependencies', '0002_task_status', '0003_task_project_conclusions'], (new Migrator($this->pdo, self::MIGRATIONS))->migrate());
     }
 
     protected function tearDown(): void
@@ -85,7 +85,7 @@ final class TaskSchemaTest extends DbTestCase
         $id = $this->task('Titre', ['category' => 'Perso']);
         $row = $this->pdo->query("SELECT * FROM tasks WHERE id = $id")->fetch();
         self::assertSame('Perso', $row['category']);
-        foreach (['due_date', 'recurrence_interval', 'recurrence_unit', 'estimated_minutes', 'description'] as $c) {
+        foreach (['due_date', 'recurrence_interval', 'recurrence_unit', 'estimated_minutes', 'description', 'project', 'conclusions'] as $c) {
             self::assertNull($row[$c], $c);
         }
         self::assertNotNull($row['created_at']);
@@ -314,7 +314,7 @@ final class TaskSchemaTest extends DbTestCase
     {
         $id = $this->task('garde');
         self::assertSame([], (new Migrator($this->pdo, self::MIGRATIONS))->migrate());
-        self::assertSame(['applied' => ['0001_tasks_and_dependencies', '0002_task_status'], 'pending' => []], (new Migrator($this->pdo, self::MIGRATIONS))->status());
+        self::assertSame(['applied' => ['0001_tasks_and_dependencies', '0002_task_status', '0003_task_project_conclusions'], 'pending' => []], (new Migrator($this->pdo, self::MIGRATIONS))->status());
         self::assertSame('garde', $this->pdo->query("SELECT title FROM tasks WHERE id = $id")->fetchColumn());
     }
 
@@ -381,13 +381,80 @@ final class TaskSchemaTest extends DbTestCase
             $this->pdo->exec('INSERT INTO task_dependencies (task_id, required_task_id) VALUES (1, 2)');
             $before = $this->pdo->query('SELECT id, title, category, due_date, recurrence_interval, recurrence_unit, description, created_at, updated_at FROM tasks ORDER BY id')->fetchAll();
 
-            self::assertSame(['0002_task_status'], (new Migrator($this->pdo, self::MIGRATIONS))->migrate());
+            self::assertSame(['0002_task_status', '0003_task_project_conclusions'], (new Migrator($this->pdo, self::MIGRATIONS))->migrate());
 
             $after = $this->pdo->query('SELECT id, title, category, due_date, recurrence_interval, recurrence_unit, description, created_at, updated_at FROM tasks ORDER BY id')->fetchAll();
             self::assertSame($before, $after, 'colonnes existantes inchangées');
             foreach ($this->pdo->query('SELECT status, completed_at FROM tasks')->fetchAll() as $row) {
                 self::assertSame('todo', $row['status']);
                 self::assertNull($row['completed_at']);
+            }
+            self::assertSame(['1>2'], $this->links());
+        } finally {
+            array_map('unlink', glob($dir . '/*') ?: []);
+            rmdir($dir);
+        }
+    }
+
+    // --- migration 0003 : projet et conclusions ---
+
+    private function insertProject(?string $project): void
+    {
+        $stmt = $this->pdo->prepare("INSERT INTO tasks (title, category, project) VALUES ('p', 'Pro', ?)");
+        $stmt->execute([$project]);
+    }
+
+    public function testProjectAcceptsNullAndEveryValueOfTheClosedList(): void
+    {
+        $this->insertProject(null);
+        foreach (\Actions\Application\TaskValidator::PROJECTS as $project) {
+            $this->insertProject($project);
+        }
+        self::assertSame(1 + count(\Actions\Application\TaskValidator::PROJECTS), (int) $this->pdo->query('SELECT count(*) FROM tasks')->fetchColumn());
+    }
+
+    public function testProjectOutsideTheListOrWithAnotherCaseIsRejected(): void
+    {
+        foreach (['', 'mshr', 'ms-hr', 'JARDIN/MAISON', 'Autre', 'MS-HR '] as $value) {
+            $this->assertViolation('23514', 'tasks_project_valid', fn () => $this->insertProject($value));
+        }
+        foreach (\Actions\Application\TaskValidator::PROJECTS as $project) { // la liste de la base = celle du validateur
+            $this->assertViolation('23514', 'tasks_project_valid', fn () => $this->insertProject(strtolower($project)));
+        }
+        self::assertSame(0, (int) $this->pdo->query('SELECT count(*) FROM tasks')->fetchColumn());
+    }
+
+    public function testConclusionsAcceptAnyTextIncludingEmpty(): void
+    {
+        foreach ([null, '', "ligne 1\nligne 2 é", str_repeat('x', 100000)] as $text) {
+            $this->pdo->prepare("INSERT INTO tasks (title, category, conclusions) VALUES ('c', 'Pro', ?)")->execute([$text]);
+        }
+        self::assertSame(4, (int) $this->pdo->query('SELECT count(*) FROM tasks')->fetchColumn());
+    }
+
+    public function testMigration0003KeepsExistingTasksWithNullProjectAndConclusions(): void
+    {
+        $this->pdo->exec('DROP TABLE IF EXISTS task_dependencies, tasks, schema_migrations CASCADE');
+        $this->pdo->exec('DROP FUNCTION IF EXISTS task_dependencies_check_cycle()');
+        $dir = sys_get_temp_dir() . '/actions-mig0002-' . bin2hex(random_bytes(4));
+        mkdir($dir);
+        try {
+            foreach (['0001_tasks_and_dependencies', '0002_task_status'] as $name) {
+                copy(self::MIGRATIONS . '/' . $name . '.sql', $dir . '/' . $name . '.sql');
+            }
+            self::assertSame(['0001_tasks_and_dependencies', '0002_task_status'], (new Migrator($this->pdo, $dir))->migrate());
+            $this->pdo->exec("INSERT INTO tasks (title, category, due_date, recurrence_interval, recurrence_unit, description)
+                VALUES ('A', 'Pro', '2026-01-31', 1, 'month', 'ctx'), ('B', 'Perso', NULL, NULL, NULL, NULL)");
+            $this->pdo->exec('INSERT INTO task_dependencies (task_id, required_task_id) VALUES (1, 2)');
+            $cols = 'id, title, category, due_date, recurrence_interval, recurrence_unit, description, status, completed_at, created_at, updated_at';
+            $before = $this->pdo->query("SELECT $cols FROM tasks ORDER BY id")->fetchAll();
+
+            self::assertSame(['0003_task_project_conclusions'], (new Migrator($this->pdo, self::MIGRATIONS))->migrate());
+
+            self::assertSame($before, $this->pdo->query("SELECT $cols FROM tasks ORDER BY id")->fetchAll(), 'colonnes existantes inchangées');
+            foreach ($this->pdo->query('SELECT project, conclusions FROM tasks')->fetchAll() as $row) {
+                self::assertNull($row['project']);
+                self::assertNull($row['conclusions']);
             }
             self::assertSame(['1>2'], $this->links());
         } finally {

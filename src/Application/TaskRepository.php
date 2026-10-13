@@ -11,7 +11,7 @@ namespace Actions\Application;
 final class TaskRepository
 {
     private const TASK_COLUMNS = "id, title, category, to_char(due_date, 'YYYY-MM-DD') AS due_date,"
-        . ' recurrence_interval, recurrence_unit, estimated_minutes, description, status,'
+        . ' recurrence_interval, recurrence_unit, estimated_minutes, description, project, conclusions, status,'
         . " to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at,"
         . " to_char(completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS completed_at,"
         . " to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS updated_at";
@@ -52,8 +52,8 @@ final class TaskRepository
     public function insert(array $task): int
     {
         $stmt = $this->run(
-            'INSERT INTO tasks (title, category, due_date, recurrence_interval, recurrence_unit, estimated_minutes, description)'
-            . ' VALUES (:title, :category, :due_date, :recurrence_interval, :recurrence_unit, :estimated_minutes, :description)'
+            'INSERT INTO tasks (title, category, due_date, recurrence_interval, recurrence_unit, estimated_minutes, description, project, conclusions)'
+            . ' VALUES (:title, :category, :due_date, :recurrence_interval, :recurrence_unit, :estimated_minutes, :description, :project, :conclusions)'
             . ' RETURNING id',
             [
                 'title' => $task['title'],
@@ -63,6 +63,8 @@ final class TaskRepository
                 'recurrence_unit' => $task['recurrence']['unit'] ?? null,
                 'estimated_minutes' => $task['estimated_minutes'],
                 'description' => $task['description'],
+                'project' => $task['project'],
+                'conclusions' => $task['conclusions'],
             ],
         );
 
@@ -71,7 +73,7 @@ final class TaskRepository
 
     /**
      * Applique les champs modifiés (clés publiques : title, category, due_date, recurrence,
-     * estimated_minutes, description) et positionne updated_at.
+     * estimated_minutes, description, project, conclusions) et positionne updated_at.
      *
      * @param array<string,mixed> $changes
      */
@@ -88,7 +90,7 @@ final class TaskRepository
                 continue;
             }
             // Noms de colonnes issus d'une liste fermée (clés déjà validées), jamais de l'entrée.
-            if (!in_array($field, ['title', 'category', 'due_date', 'estimated_minutes', 'description'], true)) {
+            if (!in_array($field, ['title', 'category', 'due_date', 'estimated_minutes', 'description', 'project', 'conclusions'], true)) {
                 throw new \LogicException('Champ non modifiable : ' . $field);
             }
             $sets[] = $field . ' = :' . $field;
@@ -127,7 +129,7 @@ final class TaskRepository
     /**
      * Triées due_date croissante (sans date en dernier), puis id. Clauses fixes, valeurs liées.
      *
-     * @param array{status?:TaskStatus,category?:string} $filters déjà validés
+     * @param array{status?:TaskStatus,category?:string,project?:string} $filters déjà validés
      * @return list<array<string,mixed>>
      */
     public function findAll(array $filters = []): array
@@ -141,6 +143,10 @@ final class TaskRepository
         if (isset($filters['category'])) {
             $where[] = 'category = :category';
             $params['category'] = $filters['category'];
+        }
+        if (isset($filters['project'])) {
+            $where[] = 'project = :project';
+            $params['project'] = $filters['project'];
         }
         $rows = $this->run(
             'SELECT ' . self::TASK_COLUMNS . ' FROM tasks' . ($where === [] ? '' : ' WHERE ' . implode(' AND ', $where))
@@ -289,6 +295,8 @@ final class TaskRepository
                 : ['interval' => (int) $r['recurrence_interval'], 'unit' => (string) $r['recurrence_unit']],
             'estimated_minutes' => $r['estimated_minutes'] === null ? null : (int) $r['estimated_minutes'],
             'description' => $r['description'] === null ? null : (string) $r['description'],
+            'project' => $r['project'] === null ? null : (string) $r['project'],
+            'conclusions' => $r['conclusions'] === null ? null : (string) $r['conclusions'],
             'required_actions' => $required,
             'status' => (string) $r['status'],
             'completed_at' => $r['completed_at'] === null ? null : (string) $r['completed_at'],

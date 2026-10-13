@@ -11,8 +11,8 @@ final class TaskFormTest extends TestCase
 {
     public function testEmptyFieldsBecomeNull(): void
     {
-        $in = TaskForm::toInput(['title' => 'T', 'category' => 'Pro', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => '']);
-        self::assertSame(['title' => 'T', 'category' => 'Pro', 'due_date' => null, 'recurrence' => null, 'estimated_minutes' => null, 'description' => null], $in);
+        $in = TaskForm::toInput(['title' => 'T', 'category' => 'Pro', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => '', 'project' => '', 'conclusions' => '']);
+        self::assertSame(['title' => 'T', 'category' => 'Pro', 'due_date' => null, 'recurrence' => null, 'estimated_minutes' => null, 'description' => null, 'project' => null, 'conclusions' => null], $in);
     }
 
     public function testDigitsBecomeIntegers(): void
@@ -40,15 +40,27 @@ final class TaskFormTest extends TestCase
         self::assertSame(['interval' => null, 'unit' => 'day'], TaskForm::toInput(['recurrence_interval' => '', 'recurrence_unit' => 'day'])['recurrence']);
     }
 
-    public function testOnlyTheSixFieldsAreForwarded(): void
+    public function testOnlyTheEightFieldsAreForwarded(): void
     {
         $in = TaskForm::toInput(['title' => 'T', 'category' => 'Pro', 'status' => 'done', 'required_actions' => [1], 'id' => '5', '_csrf' => 'x']);
-        self::assertSame(['title', 'category', 'due_date', 'recurrence', 'estimated_minutes', 'description'], array_keys($in));
+        self::assertSame(['title', 'category', 'due_date', 'recurrence', 'estimated_minutes', 'description', 'project', 'conclusions'], array_keys($in));
     }
 
     public function testNonStringValuesAreForwardedForTheUseCaseToRefuse(): void
     {
         self::assertSame(['x'], TaskForm::toInput(['title' => ['x']])['title']);
-        self::assertSame(['title' => '', 'category' => '', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => ''], TaskForm::valuesFromForm(['title' => ['x']]));
+        self::assertSame(['title' => '', 'category' => '', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => '', 'project' => '', 'conclusions' => ''], TaskForm::valuesFromForm(['title' => ['x']]));
+    }
+
+    public function testProjectAndConclusionsAreTransportedAndEmptyBecomesNull(): void
+    {
+        $in = TaskForm::toInput(['project' => 'MS-HR', 'conclusions' => "a\nb"]);
+        self::assertSame('MS-HR', $in['project']);
+        self::assertSame("a\nb", $in['conclusions']);
+        self::assertSame('ms-hr', TaskForm::toInput(['project' => 'ms-hr'])['project'], 'aucune normalisation : le cas d\'usage refuse');
+        self::assertNull(TaskForm::toInput(['project' => '', 'conclusions' => ''])['project']);
+        self::assertSame(['x'], TaskForm::toInput(['project' => ['x']])['project']);
+        self::assertSame('Erendil', TaskForm::valuesFromTask(['title' => 't', 'category' => 'Pro', 'project' => 'Erendil', 'conclusions' => 'c'])['project']);
+        self::assertSame('', TaskForm::valuesFromTask(['title' => 't', 'category' => 'Pro', 'project' => null, 'conclusions' => null])['conclusions']);
     }
 }

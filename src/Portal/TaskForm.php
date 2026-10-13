@@ -10,10 +10,10 @@ namespace Actions\Portal;
  */
 final class TaskForm
 {
-    public const FIELDS = ['title', 'category', 'due_date', 'recurrence_interval', 'recurrence_unit', 'estimated_minutes', 'description'];
+    public const FIELDS = ['title', 'category', 'due_date', 'recurrence_interval', 'recurrence_unit', 'estimated_minutes', 'description', 'project', 'conclusions'];
 
     /**
-     * Les six champs de TaskService, toujours tous présents (un champ vidé efface la valeur).
+     * Les huit champs de TaskService, toujours tous présents (un champ vidé efface la valeur).
      *
      * @param array<string,mixed> $form
      * @return array<string,mixed>
@@ -30,6 +30,8 @@ final class TaskForm
             'recurrence' => $interval === null && $unit === null ? null : ['interval' => $interval, 'unit' => $unit],
             'estimated_minutes' => self::number($form['estimated_minutes'] ?? null),
             'description' => self::nullIfEmpty($form['description'] ?? null),
+            'project' => self::nullIfEmpty($form['project'] ?? null),
+            'conclusions' => self::nullIfEmpty($form['conclusions'] ?? null),
         ];
     }
 
@@ -63,6 +65,8 @@ final class TaskForm
             'recurrence_unit' => $task['recurrence']['unit'] ?? '',
             'estimated_minutes' => isset($task['estimated_minutes']) ? (string) $task['estimated_minutes'] : '',
             'description' => $task['description'] ?? '',
+            'project' => $task['project'] ?? '',
+            'conclusions' => $task['conclusions'] ?? '',
         ];
     }
 

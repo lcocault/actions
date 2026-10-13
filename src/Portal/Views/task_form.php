@@ -42,6 +42,19 @@
   </div>
 
   <div class="field">
+    <label for="f-project">Projet</label>
+    <select id="f-project" name="project"<?php if (isset($errors['project'])): ?> aria-describedby="e-project" aria-invalid="true"<?php endif; ?>>
+      <option value=""<?= $e($values['project'] === '' ? ' selected' : '') ?>>Aucun</option>
+<?php foreach ($projects as $project): ?>
+      <option value="<?= $e($project) ?>"<?= $e($values['project'] === $project ? ' selected' : '') ?>><?= $e($project) ?></option>
+<?php endforeach; ?>
+    </select>
+<?php foreach ($errors['project'] ?? [] as $message): ?>
+    <p class="error" id="e-project"><?= $e($message) ?></p>
+<?php endforeach; ?>
+  </div>
+
+  <div class="field">
     <label for="f-due_date">Date butée</label>
     <input type="date" id="f-due_date" name="due_date" value="<?= $e($values['due_date']) ?>"<?php if (isset($errors['due_date'])): ?> aria-describedby="e-due_date" aria-invalid="true"<?php endif; ?>>
 <?php foreach ($errors['due_date'] ?? [] as $message): ?>
@@ -81,6 +94,15 @@
     <textarea id="f-description" name="description" rows="6"<?php if (isset($errors['description'])): ?> aria-describedby="e-description" aria-invalid="true"<?php endif; ?>><?= $e($values['description']) ?></textarea>
 <?php foreach ($errors['description'] ?? [] as $message): ?>
     <p class="error" id="e-description"><?= $e($message) ?></p>
+<?php endforeach; ?>
+  </div>
+
+  <div class="field">
+    <label for="f-conclusions">Conclusions</label>
+    <textarea id="f-conclusions" name="conclusions" rows="6" aria-describedby="h-conclusions<?= $e(isset($errors['conclusions']) ? ' e-conclusions' : '') ?>"<?php if (isset($errors['conclusions'])): ?> aria-invalid="true"<?php endif; ?>><?= $e($values['conclusions']) ?></textarea>
+    <p class="hint" id="h-conclusions">Ce qui a été appris ou décidé; modifiable à tout moment.</p>
+<?php foreach ($errors['conclusions'] ?? [] as $message): ?>
+    <p class="error" id="e-conclusions"><?= $e($message) ?></p>
 <?php endforeach; ?>
   </div>
 

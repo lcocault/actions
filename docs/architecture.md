@@ -8,6 +8,8 @@ Légende des statuts : **existant** (dans le dépôt, vérifiable), **proposé**
 
 **Relecture MCP de l'Architecte (2026-10-12)** : lus `src/Mcp/McpAdapter.php`, `TaskService`, `TaskController`, `RestAdapter`, `DomainStatus`, `PathId`, `Request`, `Response`, `Config`, `Bootstrap`, `PortalAdapter` (garde `Host`/`Origin`), `TaskStatus`, passages de `TaskValidator`, `tests/Http/McpTest.php` (début) et `HttpTestCase`. **Existant** : le serveur MCP du squelette expose seulement `ping`; `Bootstrap::kernel` ne lui passe pas `TaskService`; REST, portail B1/B2 et états sont livrés en local (voir BACKLOG, non commités). Les sections plus anciennes ci-dessous qui disent « non livré » pour le cycle de vie et le portail décrivent la conception d'origine; le code les a rattrapées. La conception MCP des tâches est dans « Contrat MCP des tâches (tranche MCP M1) ».
 
+**Tranche « Projet et Conclusions » (2026-10-13)** : besoin validé par l'utilisateur, conception **validée** et livrée en local (migration `0003`, contrats, portail, tests) dans « Champs "Projet" et "Conclusions" (tranche P) » plus bas. Conception validée et livrée en local (voir la section); lus par l'Architecte pour l'analyse d'impact : `0002`, `TaskRepository`, `TaskValidator`, `TaskService`, `TaskController`, `TaskTools`, `TaskPages`, `TaskForm`, `DomainStatus`, `Messages`, vues `task_list`/`task_form`/`task_detail`, `TaskSchemaTest` (passage `0002`), assertions de `McpToolsTest`. Aucun test rejoué.
+
 ## Décisions validées (tranche « squelette »)
 
 - **Validé** : PHP sans framework + Composer minimal (chaque dépendance justifiée).
@@ -263,7 +265,7 @@ Aucun contrat REST/MCP/portail n'est défini ici : cette section fixe l'API inte
 ### Cas d'usage (proposé)
 
 Forme d'une tâche en sortie (`Task`) :
-`{id:int, title:string, category:"Pro"|"Perso", due_date:"YYYY-MM-DD"|null, recurrence:{interval:int, unit:"day"|"week"|"month"|"year"}|null, estimated_minutes:int|null, description:string|null, required_actions:[{id:int,title:string}], created_at:string, updated_at:string}`. Horodatages ISO 8601 UTC (`2026-10-11T08:30:00Z`). Les unités sont les codes anglais de la base; les libellés français relèvent des interfaces. `required_actions` trié par `id`.
+`{id:int, title:string, category:"Pro"|"Perso", due_date:"YYYY-MM-DD"|null, recurrence:{interval:int, unit:"day"|"week"|"month"|"year"}|null, estimated_minutes:int|null, description:string|null, required_actions:[{id:int,title:string}], created_at:string, updated_at:string}`. Horodatages ISO 8601 UTC (`2026-10-11T08:30:00Z`). Évolution **validée et livrée** (2026-10-13) : clés `project` et `conclusions` ajoutées, voir « Champs "Projet" et "Conclusions" ». Les unités sont les codes anglais de la base; les libellés français relèvent des interfaces. `required_actions` trié par `id`.
 
 | Méthode | Entrée | Sortie | Erreurs |
 |---|---|---|---|
@@ -1014,6 +1016,112 @@ Points 2 à 6 : **validés** par l'approbation de l'utilisateur (2026-10-12) et 
 4. `cookie_path` égal au préfixe.
 5. Pas de `RewriteBase` a priori.
 6. Développement local avec préfixe sans fichiers statiques (ou lecture explicite de la feuille de style).
+
+## Champs « Projet » et « Conclusions » (tranche P) — conception du 2026-10-13, **validée par l'utilisateur et livrée en local**
+
+Besoin **validé** par l'utilisateur (2026-10-13, F1, F2, F3, F5, F6, F7 du backlog) : `project` facultatif, liste fermée `MS-HR`, `Jardin/Maison`, `OPF`, `Erendil`, `CHECK` en base, sensible à la casse, hors liste = 422; `conclusions` texte facultatif traité comme `description`, saisissable à tout moment; filtre exact `project` en ET avec état et catégorie sur REST, MCP et portail; la terminaison d'une périodique recopie `project`, pas `conclusions`. **Validé** (utilisateur, après la livraison) : la conception ci-dessous telle quelle (schéma `0003`, forme `Task`, contrats REST/MCP/portail, code `project_invalid`, recopie à la terminaison), ainsi que F4 (liste unique, aucune règle croisée avec la catégorie) et F8 (comparaison sensible à la casse, aucun `trim`). **Existant** (rapporté par le Developer, **sans écart** avec la conception; non rejoué par l'Architecte) : `database/migrations/0003_task_project_conclusions.sql` présent dans le dépôt; suite complète 630 tests OK sur PostgreSQL 17 local; smoke HTTP réel OK. **Non vérifié** : `0003` sur PostgreSQL 16 et 18, et sur AlwaysData (droit `ALTER TABLE`, pgBouncer), où aucune migration n'a été appliquée; rendu navigateur du portail. Dans cette section, les mentions « (proposé) » des titres et du tableau des règles valent désormais « **validé, existant** »; les points « non vérifié » restent valables.
+
+### Migration `0003_task_project_conclusions.sql` (proposé; le fichier fera foi)
+
+```sql
+-- Projet (liste fermée) et conclusions (texte libre), tous deux facultatifs.
+-- Additive : les tâches existantes reçoivent NULL, aucune donnée existante modifiée.
+ALTER TABLE tasks
+  ADD COLUMN project     text,
+  ADD COLUMN conclusions text,
+  ADD CONSTRAINT tasks_project_valid
+    CHECK (project IS NULL OR project IN ('MS-HR', 'Jardin/Maison', 'OPF', 'Erendil'));
+```
+
+- **Types** : `text` + `CHECK`, pas de type `ENUM` (même raison que la catégorie : une valeur de plus = une migration sur le `CHECK`, sans `ALTER TYPE`). `IS NULL OR` explicite pour ne pas dépendre de la logique à trois valeurs (leçon de `tasks_recurrence_valid`). Pas de `CHECK` sur `conclusions` (comme `description`; la validité UTF-8/NUL est portée par le validateur et par PostgreSQL).
+- **Pas d'index** : un seul utilisateur, tables de quelques centaines de lignes, tri existant sans index sur le filtre; un `project` à 4 valeurs est très peu sélectif. Un index partiel (`WHERE project IS NOT NULL`) reste ajoutable plus tard par migration, sans effet sur les contrats.
+- **Nom de contrainte** `tasks_project_valid` (famille `tasks_*_valid`). Une `23514` sur ce nom qui atteint le dépôt est un bogue du validateur : erreur interne (500 / `-32603`), non traduite (règle existante de « Validation »).
+- **Rejouabilité** : celle de `bin/migrate` (table `schema_migrations` + checksum; deuxième exécution = « Rien à appliquer »), comme 0001 et 0002. Le fichier SQL n'est volontairement pas écrit en `IF NOT EXISTS` : `ADD CONSTRAINT` ne le permet pas et une demi-garde donnerait une fausse impression de rejeu manuel. Atomicité : un seul `exec` dans une transaction, échec sans état partiel.
+- **Coût et verrou** : `ADD COLUMN` sans `DEFAULT` n'entraîne aucune réécriture de table, et l'ajout d'un `CHECK` parcourt la table sans la réécrire (PostgreSQL 17, `sql-altertable`, page consultée le 2026-10-13; les versions 16 et 18 d'AlwaysData n'ont pas été relues, comportement identique à ma connaissance : **non revérifié**). Verrou `ACCESS EXCLUSIVE` bref, sans objet à cette échelle. Le fait qu'un `CHECK` évalué à `NULL` est accepté est la sémantique standard de PostgreSQL (non citée par la page consultée) et est verrouillé par un test.
+- **Compatibilité AlwaysData** : DDL standard sur la table de l'application, aucune extension, fonction ni trigger (donc aucune dépendance aux droits `CREATE FUNCTION` non vérifiés). PostgreSQL 16 à 18 vérifié le 2026-10-10 (tableau AlwaysData). **Aucune migration n'est lancée sur AlwaysData** sans autorisation explicite; local et test seulement.
+- **Retour arrière** : pas de « down ». Avant toute application hors local : sauvegarde (`pg_dump`). Annulation = restauration, ou migration `0004` (`DROP COLUMN`, **destructive** : perte des projets et conclusions saisis, donc seulement sur décision de l'utilisateur).
+- **Ordre de déploiement du code** : appliquer `0003` **avant** le code qui sélectionne les nouvelles colonnes (le dépôt nomme ses colonnes : l'ancien code continue de fonctionner sur le nouveau schéma, l'inverse non).
+
+### Modèle partagé et couche commune (proposé)
+
+- **`Task`** gagne deux clés toujours présentes : `project: "MS-HR"|"Jardin/Maison"|"OPF"|"Erendil"|null` et `conclusions: string|null`. Ajout de clés dans l'objet : compatible en `/api/v1` (aucune clé retirée ni renommée, aucun code existant modifié). Ordre des clés non contractuel. Consommateurs : voir « Impact ».
+- **Source unique de la liste** : constante `TaskValidator::PROJECTS` (comme `CATEGORIES` et `UNITS`), réutilisée par le validateur, l'`inputSchema` MCP et les listes déroulantes du portail. La base répète la liste dans le `CHECK` (duplication acceptée, comme la catégorie); un test d'intégration parcourt `PROJECTS` et vérifie que la base accepte chaque valeur et refuse les variantes de casse, garantissant que les deux ne divergent pas.
+- **`TaskValidator`** : `FIELDS` gagne `project` et `conclusions`; `create` et `update` les acceptent (création : absents = `null`); `update` valide l'état fusionné comme aujourd'hui, `null` efface, clé absente inchangée.
+
+| Champ | Règle | `code` |
+|---|---|---|
+| `project` | `null` ou chaîne exactement égale (comparaison stricte, sensible à la casse, sans `trim`) à l'une de `PROJECTS`; la chaîne vide et toute autre chaîne sont refusées, sans normalisation | `project_invalid` (proposé) |
+| `project` (type) | valeur non chaîne et non `null` (nombre, booléen, tableau, objet) | `field_type_invalid` |
+| `conclusions` | `null` ou chaîne UTF-8 valide sans octet NUL, sans borne de longueur, chaîne vide conservée telle quelle (F5, identique à `description`) | `text_invalid`, `field_type_invalid` |
+
+  Message de `project_invalid` : français court, construit à partir de `PROJECTS` (« Le projet doit être MS-HR, Jardin/Maison, OPF ou Erendil. »), `details.field = "project"`. Statut 422 par la classe `InvalidTask` : `DomainStatus` inchangé.
+- **Filtre** : `TaskService::list(array $filters)` accepte la clé `project` (une valeur, ET avec `status` et `category`); `validateFilters` l'autorise et applique la même règle `project_invalid` (valeur vide ou hors liste = 422, non-chaîne = `field_type_invalid`), exactement comme pour `category`. Le dépôt ajoute `project = :project` à la clause `WHERE` (valeur liée, clause fixe).
+- **`TaskRepository`** : `TASK_COLUMNS`, `toTask`, `insert` (colonnes nommées, deux paramètres de plus) et la liste fermée des colonnes modifiables de `update` gagnent `project` et `conclusions`. Toujours `SELECT` avec colonnes nommées, jamais `SELECT *`.
+- **Recopie à la terminaison (F7)** : dans `changeStatus`, le tableau passé à `insert` pour la nouvelle occurrence reçoit `'project' => $current['project']` et `'conclusions' => null`, **explicites** (l'`insert` lit les deux clés : un oubli lèverait une erreur plutôt que de copier silencieusement). La ligne source est déjà verrouillée (`FOR UPDATE`) : la valeur copiée est cohérente. L'occurrence terminée garde `project` et `conclusions`. `setStatus` ne touche ni l'un ni l'autre : la réouverture conserve les conclusions (F6). Le contrat d'état (`PATCH {"status": …}` seul, `change_task_status`) est **inchangé**.
+- **Aucune règle croisée** (F4, hypothèse) : ni avec la catégorie, ni avec l'état. `conclusions` et `project` restent modifiables sur une tâche `done` (règle existante « autres champs d'une Terminée modifiables », qui met `updated_at` à jour).
+
+### Contrat REST (proposé; versionnement `/api/v1` conservé, ajouts compatibles)
+
+| Opération | Changement |
+|---|---|
+| `POST /api/v1/tasks` | corps : `project` et `conclusions` facultatifs (absents = `null`); 201 avec la tâche complète (deux clés de plus) |
+| `GET /api/v1/tasks/{id}` | réponse : deux clés de plus |
+| `GET /api/v1/tasks` | réponse : deux clés de plus par tâche; paramètre `?project=<valeur exacte>` (valeur encodée en URL : `Jardin%2FMaison`), seul filtre ajouté; combiné en ET avec `status` et `category`; absent = pas de filtre; `?project=` vide ou hors liste (dont `jardin/maison`) : 422 `project_invalid`, `details.field = "project"`; `?project[]=x` : 422 `field_type_invalid`. `TaskController::list` ajoute `project` à sa liste blanche de paramètres (les autres restent ignorés) |
+| `PATCH /api/v1/tasks/{id}` | `project` et `conclusions` modifiables, `null` efface, clé absente inchangée; avec `status` : `status_not_alone` (inchangé); 200 avec la tâche; si le corps portait `status`, `next_occurrence` (qui porte `project` recopié et `conclusions: null`) |
+| `PUT`/`DELETE` des liens, `DELETE /tasks/{id}` | aucun changement de contrat (réponses `Task` : deux clés de plus) |
+
+Erreurs ajoutées : `project_invalid` (422, nouveau code, famille `InvalidTask`); `field_type_invalid` et `text_invalid` s'appliquent aux nouveaux champs. Aucun code existant n'est modifié; `field_unknown` n'est plus levé pour `project` et `conclusions` (ils étaient refusés comme clés inconnues avant la tranche : changement de comportement voulu, ajout de fonctionnalité).
+
+### Contrat MCP (proposé)
+
+Aucun nouvel outil; aucun changement de `TaskTools::call` (les arguments sont transmis à `TaskService`, qui valide). `inputSchema` (strict, `additionalProperties: false`) :
+
+| Outil | Ajout |
+|---|---|
+| `create_task`, `update_task` | `project` : `{"type":["string","null"],"enum":["MS-HR","Jardin/Maison","OPF","Erendil",null],"description":"Projet (liste fermée), ou null pour l'effacer."}`; `conclusions` : `{"type":["string","null"],"description":"Conclusions (ce qui a été appris ou décidé), ou null pour l'effacer."}`; ni l'un ni l'autre n'est obligatoire. L'énumération est produite à partir de `TaskValidator::PROJECTS` (+ `null`). |
+| `list_tasks` | `project` : `{"type":"string","enum":[…PROJECTS…],"description":"Filtre exact sur le projet."}` (sans `null` : un filtre n'a pas de valeur « aucun »); description de l'outil complétée (« ou par projet »). |
+| `get_task`, `add_required_action`, `remove_required_action`, `change_task_status`, `delete_task` | schéma inchangé; la tâche renvoyée porte les deux clés; `change_task_status` n'accepte toujours que `id` et `status`; `next_occurrence` porte `project` recopié et `conclusions: null` |
+
+Erreurs : mêmes codes et même JSON que REST (`isError: true`), donc `project_invalid` côté MCP identique à REST, octet pour octet. `update_task` continue de refuser `status` en `field_unknown`. Les clients qui ont mis `tools/list` en cache voient un schéma enrichi (ajout facultatif, compatible).
+
+### Portail (proposé)
+
+Cas d'usage appelés : `TaskService::create`, `update`, `get`, `list` (aucun nouveau). Aucune règle dans l'adaptateur.
+- **`TaskForm`** : `FIELDS` gagne `project` et `conclusions`; `toInput` envoie toujours les deux clés (`project` : chaîne vide -> `null`; `conclusions` : chaîne vide -> `null`, **comme `description` aujourd'hui** : une saisie vidée efface); `valuesFromForm`, `valuesFromTask`, `emptyValues` suivent.
+- **Formulaires de création et de modification** : une liste déroulante « Projet » (option vide « Aucun », puis les valeurs de `TaskValidator::PROJECTS`) et une zone de texte « Conclusions » (`textarea`, libellés `for`/`id`, `aria-describedby`/`aria-invalid` en cas d'erreur, même schéma que `description`). La saisie est conservée en cas d'erreur.
+- **`TaskPages`** : `FORM_FIELD` et `ANCHOR` gagnent `project` (`f-project`) et `conclusions` (`f-conclusions`) pour rattacher l'erreur au champ; `Messages` : `project_invalid` utilise le message de l'exception (liste générée, pas de texte dupliqué), `text_invalid` déjà couvert.
+- **Détail** : lignes « Projet » (« Aucun » si `null`) et « Conclusions » (bloc multiligne, « Aucune » si `null`, échappé comme `description`).
+- **Liste** : colonne « Projet » ajoutée au tableau (présentation; les conclusions n'y figurent pas). **Filtre** : liste déroulante « Projet » (« Tous » = filtre absent) ajoutée au formulaire GET, `name="project"`; `TaskPages::list` ajoute `project` à la boucle des filtres `status`/`category` (valeur vide = « Tous », hors liste forgée = 422 via la page « Filtre invalide » existante); « Filtres actifs » mentionne le projet; `isFiltered` en tient compte. Combiné en ET avec état, catégorie et `hide_done`.
+- **Page `/reopen` et message de terminaison** : inchangés. La prochaine occurrence affichée est celle du cas d'usage (projet recopié).
+- Regroupement visuel par projet : hors tranche (F3).
+
+### Impact (analyse)
+
+- **Données** : tâches existantes inchangées (`project` et `conclusions` à `NULL`), aucune perte; production inexistante (aucune migration AlwaysData).
+- **REST, MCP, portail** : réponses enrichies de deux clés (compatible); requêtes inchangées valides. Seule rupture de comportement : `project`/`conclusions` cessent d'être refusés en `field_unknown`, sans consommateur existant concerné (aucun client externe documenté).
+- **Tests existants à adapter (conséquences attendues, pas des régressions)** : `TaskSchemaTest` (liste exacte des migrations appliquées, dont `['0001…','0002…']` aux lignes citées `setUp` et `status()`, et `testMigration0002BackfillsExistingTasksAsTodoWithoutLosingData` qui attendra maintenant `0002` et `0003` dans la liste migrée); les tests qui comparent la forme complète d'une tâche ou la liste de ses champs nuls (par exemple `McpTasksTest`, boucle sur `['due_date', …, 'completed_at']`); `McpToolsTest` (schémas) pour les assertions sur les propriétés. À relire par le Developer test par test.
+- **Aucun** changement : `DomainStatus`, `PathId`, `HostGuard`, gardes du portail, mécanisme de migrations, dépendances Composer (aucune ajoutée).
+- **Sécurité** : requêtes paramétrées (filtre `project` lié, colonnes nommées en liste fermée); validation côté serveur par liste fermée; texte des conclusions échappé à l'affichage portail (garde d'échappement existante des gabarits); aucune donnée sensible nouvelle; les erreurs n'exposent que le code, le message et `details.field`.
+
+### Stratégie de tests (à écrire avant le code, contre PostgreSQL réel)
+
+1. **Schéma** (`TaskSchemaTest`) : migration `0003` sur base vide; liste appliquée à jour; rejeu sans effet; tâches créées avant `0003` conservées avec `project`/`conclusions` à `NULL` (même technique que le test de rattrapage de `0002`); la base accepte `NULL` et chacune des valeurs de `PROJECTS`, refuse `''`, `'mshr'`, `'ms-hr'`, `'JARDIN/MAISON'`, `'Autre'` (SQLSTATE `23514`, nom `tasks_project_valid` dans le message); `conclusions` accepte tout texte, y compris vide.
+2. **Validateur** (`TaskValidatorTest`, unitaire) : chaque valeur de `PROJECTS` acceptée; `null` accepté et efface; `''`, variantes de casse, valeur inconnue, `'MS-HR '` (espace) : `project_invalid`; nombre, booléen, tableau : `field_type_invalid`; `conclusions` : `null`, chaîne vide conservée, texte long, NUL et UTF-8 invalide en `text_invalid`, non-chaîne en `field_type_invalid`; filtre `project` valide, vide, hors liste, non chaîne.
+3. **Service** (`TaskServiceTest`, `TaskStatusServiceTest`) : création sans les champs (`null`) et avec; `update` pose, change, efface (`null`), laisse inchangé si absent; `update` identique n'écrit pas (`updated_at` stable); modification sur une tâche `done` autorisée; filtre `project` seul, en ET avec `status` et `category`, résultat vide si aucun; terminaison d'une périodique : l'occurrence a le même `project` et `conclusions` `null`, l'occurrence terminée garde les deux, `next_occurrence` expose les deux clés; terminaison d'une non périodique : rien créé; réouverture : conclusions et projet conservés; `status` avec `project` : `status_not_alone`.
+4. **REST** (`RestTasksCrudTest`, `RestTaskStatusTest`) : `POST`/`PATCH`/`GET` avec et sans les champs; 422 `project_invalid` avec `details.field`, tâche inchangée; 422 `field_type_invalid` et `text_invalid`; `GET ?project=Jardin%2FMaison` exact, ET avec `status` et `category`, `?project=` vide, `?project=ms-hr`, `?project[]=x` : 422; paramètre inconnu toujours ignoré; terminaison par `PATCH` avec `project` recopié.
+5. **MCP** (`McpToolsTest`, `McpTasksTest`) : `tools/list` : `create_task` et `update_task` déclarent `project` (énumération égale à `TaskValidator::PROJECTS` + `null`) et `conclusions`, non obligatoires; `list_tasks` déclare `project` (énumération sans `null`); `change_task_status` inchangé; tests de parité : mêmes entrées invalides que REST donnent le même JSON d'erreur; filtre exact via `list_tasks`; recopie à la terminaison.
+6. **Portail** (`PortalTasksTest`, `PortalViewsTest`, `TaskFormTest`) : formulaires de création et de modification avec projet et conclusions, saisie conservée en cas d'erreur, valeur de projet forgée hors liste : 422 avec message près du champ, option vide = `null`, champ vidé = effacé; détail (« Aucun »/« Aucune ») et échappement d'un `<script>` dans les conclusions; filtre exact en ET avec état, catégorie et `hide_done`, valeur « Tous », valeur forgée 422; recopie à la terminaison visible sur la nouvelle occurrence; parité avec REST sur les cas de validation.
+7. Suite complète rejouée par le Developer (`vendor/bin/phpunit`), plus un smoke HTTP réel (REST, MCP, portail) et la lecture du README; vérification en navigateur du formulaire (libellés, clavier, focus) laissée à l'utilisateur ou au Developer.
+
+### Validation (tranche P) — historique des points soumis
+
+Tous les points ci-dessous sont **validés** par l'utilisateur ; F4 et F8 sont confirmées. Reste **non vérifié** : PostgreSQL 16 et 18, AlwaysData, navigateur.
+
+### Points soumis avant implémentation (tranche P)
+
+**Structurant** : (1) schéma `0003` (deux colonnes `text` nullables, `CHECK` `tasks_project_valid` sur la liste fermée, pas d'index); (2) ajout de `project` et `conclusions` à la forme `Task` renvoyée par REST, MCP et portail; (3) contrats modifiés : paramètre `?project=` de `GET /tasks`, `project`/`conclusions` sur `POST`/`PATCH`, schémas de `create_task`, `update_task`, `list_tasks`; (4) nouveau code d'erreur `project_invalid` (422); (5) recopie de `project` (et non de `conclusions`) à la terminaison, par `changeStatus`.
+**Hypothèses à confirmer** : F4 (liste unique, aucune règle croisée avec la catégorie); F8 (sensible à la casse, aucun `trim`); nom `project_invalid`; `?project=` vide = 422 en REST (cohérent avec `category`) alors que le portail le traduit en « Tous »; `conclusions` vide conservé tel quel en REST/MCP mais converti en `null` par le portail (comme `description`); colonne « Projet » dans la liste du portail (présentation, modifiable).
+**Non vérifié** : application de `0003` sur PostgreSQL 16 et 18 et sur AlwaysData (droit `ALTER TABLE` du rôle, pgBouncer) : à tester sur base jetable avant déploiement, sans migration opérationnelle sans autorisation.
 
 ## Dépendances Composer (proposé)
 

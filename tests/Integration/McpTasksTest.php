@@ -138,7 +138,7 @@ final class McpTasksTest extends DbTestCase
         $min = $this->ok('create_task', ['title' => 'Minimale', 'category' => 'Pro']);
         self::assertIsInt($min['id']);
         self::assertSame('Minimale', $min['title']);
-        foreach (['due_date', 'recurrence', 'estimated_minutes', 'description', 'completed_at'] as $f) {
+        foreach (['due_date', 'recurrence', 'estimated_minutes', 'description', 'project', 'conclusions', 'completed_at'] as $f) {
             self::assertNull($min[$f], $f);
         }
         self::assertSame([], $min['required_actions']);
