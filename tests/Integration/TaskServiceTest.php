@@ -23,15 +23,13 @@ final class TaskServiceTest extends DbTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->pdo->exec('DROP TABLE IF EXISTS task_dependencies, tasks, schema_migrations CASCADE');
-        $this->pdo->exec('DROP FUNCTION IF EXISTS task_dependencies_check_cycle()');
-        (new Migrator($this->pdo, __DIR__ . '/../../database/migrations'))->migrate();
+        $this->migrateFresh();
         $this->svc = Bootstrap::taskService($this->config);
     }
 
     private function make(string $title = 't', array $extra = []): int
     {
-        return $this->svc->create(['title' => $title, 'category' => 'Pro'] + $extra)['id'];
+        return $this->svc->create(['title' => $title, 'project' => 'Divers Pro'] + $extra)['id'];
     }
 
     private function rows(string $table): int
@@ -72,7 +70,7 @@ final class TaskServiceTest extends DbTestCase
 
     public function testCreateMinimalReturnsIdAndUnsetFields(): void
     {
-        $t = $this->svc->create(['title' => 'Payer la taxe', 'category' => 'Perso']);
+        $t = $this->svc->create(['title' => 'Payer la taxe', 'project' => 'Divers Perso']);
         self::assertIsInt($t['id']);
         self::assertSame('Payer la taxe', $t['title']);
         self::assertSame('Perso', $t['category']);
@@ -88,7 +86,7 @@ final class TaskServiceTest extends DbTestCase
     public function testCreateFullTaskAndStoresTitleAsIs(): void
     {
         $t = $this->svc->create([
-            'title' => '  Rapport é ', 'category' => 'Pro', 'due_date' => '2020-02-29',
+            'title' => '  Rapport é ', 'project' => 'Divers Pro', 'due_date' => '2020-02-29',
             'recurrence' => ['interval' => 3, 'unit' => 'month'], 'estimated_minutes' => 90, 'description' => '',
         ]);
         self::assertSame('  Rapport é ', $t['title']);
@@ -100,7 +98,7 @@ final class TaskServiceTest extends DbTestCase
 
     public function testPastDueDateAccepted(): void
     {
-        self::assertSame('1999-12-31', $this->svc->create(['title' => 'a', 'category' => 'Pro', 'due_date' => '1999-12-31'])['due_date']);
+        self::assertSame('1999-12-31', $this->svc->create(['title' => 'a', 'project' => 'Divers Pro', 'due_date' => '1999-12-31'])['due_date']);
     }
 
     // Critère 2 : un code distinct par règle, sans écriture
@@ -108,7 +106,7 @@ final class TaskServiceTest extends DbTestCase
     /** @return array<string,array{array<string,mixed>,string}> */
     public static function invalidCreations(): array
     {
-        $ok = ['title' => 'a', 'category' => 'Pro'];
+        $ok = ['title' => 'a', 'project' => 'Divers Pro'];
 
         return [
             'titre vide' => [['title' => ''] + $ok, 'title_blank'],
@@ -118,7 +116,9 @@ final class TaskServiceTest extends DbTestCase
             'titre espace insécable' => [['title' => "\u{00A0}\u{2003}"] + $ok, 'title_blank'],
             'titre trop long' => [['title' => str_repeat('x', 256)] + $ok, 'title_too_long'],
             'texte invalide' => [['title' => "a\0"] + $ok, 'text_invalid'],
-            'catégorie inconnue' => [['category' => 'Autre'] + $ok, 'category_invalid'],
+            'catégorie refusée (dérivée du projet)' => [['category' => 'Pro'] + $ok, 'field_unknown'],
+            'projet inconnu' => [['title' => 'a', 'project' => 'Inexistant'], 'project_invalid'],
+            'projet vide' => [['title' => 'a', 'project' => ''], 'project_invalid'],
             'estimation nulle' => [['estimated_minutes' => 0] + $ok, 'estimated_minutes_invalid'],
             'estimation négative' => [['estimated_minutes' => -1] + $ok, 'estimated_minutes_invalid'],
             'estimation décimale' => [['estimated_minutes' => 1.5] + $ok, 'field_type_invalid'],
@@ -141,8 +141,10 @@ final class TaskServiceTest extends DbTestCase
 
     public function testInvalidCreationDetailsNameTheField(): void
     {
-        $e = $this->refused(InvalidTask::class, 'category_invalid', fn () => $this->svc->create(['title' => 'a', 'category' => 'x']));
+        $e = $this->refused(InvalidTask::class, 'field_unknown', fn () => $this->svc->create(['title' => 'a', 'project' => 'Divers Pro', 'category' => 'x']));
         self::assertSame(['field' => 'category'], $e->details());
+        $e = $this->refused(InvalidTask::class, 'project_invalid', fn () => $this->svc->create(['title' => 'a']));
+        self::assertSame(['field' => 'project'], $e->details());
     }
 
     // Critère 3 : liens
@@ -397,7 +399,9 @@ final class TaskServiceTest extends DbTestCase
         $id = $this->make('A');
         $before = $this->ageUpdatedAt($id);
         $this->refused(InvalidTask::class, 'title_blank', fn () => $this->svc->update($id, ['title' => "\t\n"]));
-        $this->refused(InvalidTask::class, 'category_invalid', fn () => $this->svc->update($id, ['category' => 'Autre']));
+        $this->refused(InvalidTask::class, 'field_unknown', fn () => $this->svc->update($id, ['category' => 'Autre']));
+        $this->refused(InvalidTask::class, 'project_invalid', fn () => $this->svc->update($id, ['project' => 'Inexistant']));
+        $this->refused(InvalidTask::class, 'project_invalid', fn () => $this->svc->update($id, ['project' => null]));
         self::assertSame('A', $this->svc->get($id)['title']);
         self::assertSame($before, $this->updatedAt($id));
     }
@@ -443,16 +447,16 @@ final class TaskServiceTest extends DbTestCase
     public function testSqlMetacharactersAreStoredLiterally(): void
     {
         $title = "x'); DROP TABLE tasks; --";
-        $t = $this->svc->create(['title' => $title, 'category' => 'Pro', 'description' => "'; DELETE FROM tasks; --"]);
+        $t = $this->svc->create(['title' => $title, 'project' => 'Divers Pro', 'description' => "'; DELETE FROM tasks; --"]);
         self::assertSame($title, $this->svc->get($t['id'])['title']);
         self::assertSame(1, $this->rows('tasks'));
     }
 
     public function testUnreachableDatabaseIsDatabaseUnavailable(): void
     {
-        $svc = new TaskService(new \Actions\Application\TaskRepository(
+        $svc = \Actions\Tests\Support\Services::tasks(
             static fn (): \PDO => throw new \PDOException('connexion refusée'),
-        ));
+        );
         $this->expectException(\Actions\Application\DatabaseUnavailable::class);
         $svc->get(1);
     }

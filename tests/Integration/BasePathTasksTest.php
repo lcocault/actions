@@ -20,9 +20,7 @@ final class BasePathTasksTest extends DbTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->pdo->exec('DROP TABLE IF EXISTS task_dependencies, tasks, schema_migrations CASCADE');
-        $this->pdo->exec('DROP FUNCTION IF EXISTS task_dependencies_check_cycle()');
-        (new Migrator($this->pdo, __DIR__ . '/../../database/migrations'))->migrate();
+        $this->migrateFresh();
         $this->session = new ArraySession();
         $c = $this->config;
         $config = new Config('test', $c->dbHost, $c->dbPort, $c->dbName, $c->dbUser, $c->dbPassword, [], appBasePath: '/actions');
@@ -36,7 +34,7 @@ final class BasePathTasksTest extends DbTestCase
 
     public function testRestCreateLocationIsPrefixed(): void
     {
-        $r = $this->kernel->handle(new Request('POST', '/actions/api/v1/tasks', [], '{"title":"T","category":"Pro"}'));
+        $r = $this->kernel->handle(new Request('POST', '/actions/api/v1/tasks', [], '{"title":"T","project":"Divers Pro"}'));
         self::assertSame(201, $r->status);
         $id = json_decode($r->body, true)['id'];
         self::assertSame("/actions/api/v1/tasks/$id", $r->headers['Location']);
@@ -46,12 +44,12 @@ final class BasePathTasksTest extends DbTestCase
     public function testPortalCreateRedirectsAndPagesAreLinkedUnderPrefix(): void
     {
         $host = ['host' => '127.0.0.1:8080'];
-        $form = ['_csrf' => $this->session->csrfToken(), 'title' => 'Portail', 'category' => 'Perso'];
+        $form = ['_csrf' => $this->session->csrfToken(), 'title' => 'Portail', 'project' => 'Divers Perso'];
         $r = $this->kernel->handle(new Request('POST', '/actions/tasks', $host, '', [], $form));
         self::assertSame(303, $r->status);
         self::assertMatchesRegularExpression('#^/actions/tasks/\d+$#', $r->headers['Location']);
 
-        foreach (['/actions/tasks', $r->headers['Location'], $r->headers['Location'] . '/edit', $r->headers['Location'] . '/delete'] as $path) {
+        foreach (['/actions/tasks', '/actions/tasks/new', $r->headers['Location'], $r->headers['Location'] . '/edit', $r->headers['Location'] . '/delete'] as $path) {
             $page = $this->kernel->handle(new Request('GET', $path, $host));
             self::assertSame(200, $page->status, $path);
             preg_match_all('/\b(?:href|action|src)="([^"]*)"/', $page->body, $m);

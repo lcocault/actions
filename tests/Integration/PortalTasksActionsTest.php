@@ -29,9 +29,7 @@ final class PortalTasksActionsTest extends DbTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->pdo->exec('DROP TABLE IF EXISTS task_dependencies, tasks, schema_migrations CASCADE');
-        $this->pdo->exec('DROP FUNCTION IF EXISTS task_dependencies_check_cycle()');
-        (new Migrator($this->pdo, __DIR__ . '/../../database/migrations'))->migrate();
+        $this->migrateFresh();
         $this->session = new ArraySession();
         $this->kernel = Bootstrap::kernel($this->config, $this->session);
         $this->service = Bootstrap::taskService($this->config);
@@ -55,7 +53,7 @@ final class PortalTasksActionsTest extends DbTestCase
     /** @param array<string,mixed> $data @return array<string,mixed> */
     private function seed(string $title = 'Tâche', array $data = []): array
     {
-        return $this->service->create($data + ['title' => $title, 'category' => 'Pro']);
+        return $this->service->create($data + ['title' => $title, 'project' => 'Divers Pro']);
     }
 
     private function snapshot(): string
@@ -532,9 +530,10 @@ final class PortalTasksActionsTest extends DbTestCase
 
     public function testUnavailableDatabaseOnNewRoutesLeaksNothing(): void
     {
-        $portal = new PortalAdapter(new TaskService(new TaskRepository(static function (): \PDO {
+        $connect = static function (): \PDO {
             throw new \PDOException('SQLSTATE[XX000] secret_table password=hunter2');
-        })), $this->session, ['127.0.0.1']);
+        };
+        $portal = new PortalAdapter(\Actions\Tests\Support\Services::tasks($connect), \Actions\Tests\Support\Services::projects($connect), $this->session, ['127.0.0.1']);
         foreach ([
             ['POST', '/tasks/1/status', ['status' => 'done']],
             ['POST', '/tasks/1/required-actions', ['required_id' => '2']],

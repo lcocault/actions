@@ -5,13 +5,13 @@ Gestionnaire de tâches (API REST, MCP, portail web). Voir [CLAUDE.md](CLAUDE.md
 ## État (local uniquement)
 
 **Existant**
-- Schéma PostgreSQL : migrations `0001` (tâches, dépendances, refus des cycles par trigger), `0002` (état et date de clôture) et `0003` (projet, liste fermée `MS-HR`, `Jardin/Maison`, `OPF`, `Erendil`, et conclusions, tous deux facultatifs).
+- Schéma PostgreSQL : migrations `0001` (tâches, dépendances, refus des cycles par trigger), `0002` (état et date de clôture) `0003` (projet en liste fermée et conclusions) et `0004` (projets configurables : table `projects`, la catégorie `Pro`/`Perso` d'une tâche découle de son projet; six projets créés : `MS-HR` Pro; `Jardin/Maison`, `OPF`, `Erendil` Perso; accueils `Divers Pro` et `Divers Perso`).
 - Couche commune `src/Application` : créer, lire, lister (filtres état, catégorie et projet), modifier, supprimer une tâche; gérer ses actions requises; changer son état (À faire, En cours, Terminée). Terminer une tâche périodique crée l'occurrence suivante.
-- API REST `/api/v1` : `GET`/`POST /tasks`, `GET`/`PATCH`/`DELETE /tasks/{id}` (`PATCH` avec `status` pour changer l'état), `PUT`/`DELETE /tasks/{id}/required-actions/{id}`, `GET /health`. Contrat et codes d'erreur : [docs/architecture.md](docs/architecture.md).
-- Portail web (tranches B1 et B2) : `GET /` redirige vers `/tasks`. Pages HTML rendues par le serveur, sans JavaScript : liste (filtres état, catégorie, projet, « masquer les terminées »), détail, création, modification, suppression avec page de confirmation (refusée si la tâche est requise par d'autres), ajout et retrait d'actions requises, changement d'état (boutons Démarrer, Terminer, Remettre à faire, Rouvrir; terminer une tâche périodique crée l'occurrence suivante; rouvrir une périodique terminée passe par une page d'avertissement). Protections : contrôle de `Host` (`PORTAL_ALLOWED_HOSTS`), `Origin` et jeton CSRF sur les `POST`, en-têtes de sécurité, échappement systématique. Contrat des pages : [docs/architecture.md](docs/architecture.md).
+- API REST `/api/v1` : `GET`/`POST /projects`, `GET`/`PATCH`/`DELETE /projects/{id}` (la catégorie d'une tâche n'est plus saisie : `category` est refusée en écriture, `project` est obligatoire), `GET`/`POST /tasks`, `GET`/`PATCH`/`DELETE /tasks/{id}` (`PATCH` avec `status` pour changer l'état), `PUT`/`DELETE /tasks/{id}/required-actions/{id}`, `GET /health`. Contrat et codes d'erreur : [docs/architecture.md](docs/architecture.md).
+- Portail web (tranches B1 et B2) : `GET /` redirige vers `/tasks`. Pages HTML rendues par le serveur, sans JavaScript : liste (filtres état, catégorie, projet configuré, « masquer les terminées »; la catégorie découle du projet, il n'y a plus de champ Catégorie dans les formulaires), détail, création, modification, suppression avec page de confirmation (refusée si la tâche est requise par d'autres), ajout et retrait d'actions requises, changement d'état (boutons Démarrer, Terminer, Remettre à faire, Rouvrir; terminer une tâche périodique crée l'occurrence suivante; rouvrir une périodique terminée passe par une page d'avertissement). Protections : contrôle de `Host` (`PORTAL_ALLOWED_HOSTS`), `Origin` et jeton CSRF sur les `POST`, en-têtes de sécurité, échappement systématique. Contrat des pages : [docs/architecture.md](docs/architecture.md).
 - MCP (`POST /mcp`, tranche MCP M1) : huit outils des tâches plus `ping` : `create_task`, `get_task`, `list_tasks`, `update_task`, `delete_task` (exige `confirm: true`), `add_required_action`, `remove_required_action`, `change_task_status`. Mêmes règles, champs et codes d'erreur que REST (texte JSON; erreur d'outil : `isError: true`). Contrat : [docs/architecture.md](docs/architecture.md).
 
-**Non fait** : authentification (ne lier qu'à `127.0.0.1`), déploiement AlwaysData (aucune migration lancée hors local).
+**Non fait** : pages portail de gestion des projets et outil MCP `list_projects` (tranche 2; les projets se gèrent par REST), authentification (ne lier qu'à `127.0.0.1`), déploiement AlwaysData (aucune migration lancée hors local).
 
 ## Démarrage local
 
@@ -49,3 +49,5 @@ Préfixe d'URL : `APP_BASE_PATH` (ex. `/actions`, vide par défaut = aucun préf
 ## Migrations
 
 Fichiers `database/migrations/NNNN_nom.sql`, voir [database/migrations/README.md](database/migrations/README.md). Refusées hors `APP_ENV` `local`/`test`.
+
+Avant `0004` sur une base qui contient déjà des tâches : sauvegarde (`pg_dump`), puis `php bin/report-project-conflicts` (lecture seule; code de sortie 1 et liste des tâches dont la catégorie diffère de celle de leur projet), arbitrage manuel, puis `php bin/migrate`.

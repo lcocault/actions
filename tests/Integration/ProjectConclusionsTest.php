@@ -6,17 +6,15 @@ namespace Actions\Tests\Integration;
 
 use Actions\Application\InvalidTask;
 use Actions\Application\TaskService;
-use Actions\Application\TaskValidator;
 use Actions\Bootstrap;
 use Actions\Http\Kernel;
 use Actions\Http\Request;
 use Actions\Http\Response;
-use Actions\Infrastructure\Migrator;
 use Actions\Tests\Support\ArraySession;
 
 /**
- * Champs « Projet » et « Conclusions » (tranche P) : couche commune, REST, MCP et portail
- * contre PostgreSQL réel (base actions_test, remigrée dans setUp).
+ * Champs « Projet » (désormais obligatoire et configurable, catégorie dérivée) et « Conclusions » : couche commune,
+ * REST, MCP et portail contre PostgreSQL réel (base actions_test, remigrée dans setUp).
  */
 final class ProjectConclusionsTest extends DbTestCase
 {
@@ -30,9 +28,7 @@ final class ProjectConclusionsTest extends DbTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->pdo->exec('DROP TABLE IF EXISTS task_dependencies, tasks, schema_migrations CASCADE');
-        $this->pdo->exec('DROP FUNCTION IF EXISTS task_dependencies_check_cycle()');
-        (new Migrator($this->pdo, __DIR__ . '/../../database/migrations'))->migrate();
+        $this->migrateFresh();
         $this->session = new ArraySession();
         $this->kernel = Bootstrap::kernel($this->config, $this->session);
         $this->svc = Bootstrap::taskService($this->config);
@@ -55,7 +51,7 @@ final class ProjectConclusionsTest extends DbTestCase
     /** @return array<string,mixed> */
     private function make(array $data = []): array
     {
-        return $this->svc->create($data + ['title' => 'T', 'category' => 'Pro']);
+        return $this->svc->create($data + ['title' => 'T', 'project' => 'Divers Pro']);
     }
 
     /** @return array<string,mixed> réponse JSON-RPC */
@@ -113,28 +109,30 @@ final class ProjectConclusionsTest extends DbTestCase
 
     // --- Service ---
 
-    public function testCreationWithoutTheFieldsGivesNullAndWithThemKeepsThem(): void
+    public function testCreationWithProjectAndConclusions(): void
     {
         $min = $this->make();
-        self::assertArrayHasKey('project', $min);
-        self::assertArrayHasKey('conclusions', $min);
-        self::assertNull($min['project']);
+        self::assertSame('Divers Pro', $min['project']);
+        self::assertSame('Pro', $min['category']);
         self::assertNull($min['conclusions']);
         $full = $this->make(['project' => 'Jardin/Maison', 'conclusions' => "ligne 1\nligne 2"]);
         self::assertSame('Jardin/Maison', $full['project']);
+        self::assertSame('Perso', $full['category'], 'catégorie dérivée du projet');
         self::assertSame("ligne 1\nligne 2", $full['conclusions']);
         self::assertSame($full, $this->svc->get($full['id']));
         self::assertSame('', $this->make(['conclusions' => ''])['conclusions'], 'chaîne vide conservée');
     }
 
-    public function testEveryProjectOfTheListIsStored(): void
+    public function testEveryConfiguredProjectIsStoredWithItsCategory(): void
     {
-        foreach (TaskValidator::PROJECTS as $project) {
-            self::assertSame($project, $this->make(['project' => $project])['project']);
+        $expected = ['MS-HR' => 'Pro', 'Jardin/Maison' => 'Perso', 'OPF' => 'Perso', 'Erendil' => 'Perso', 'Divers Pro' => 'Pro', 'Divers Perso' => 'Perso'];
+        foreach ($expected as $project => $category) {
+            $t = $this->make(['project' => $project]);
+            self::assertSame([$project, $category], [$t['project'], $t['category']]);
         }
     }
 
-    public function testUpdateSetsChangesClearsAndLeavesUntouchedWhenAbsent(): void
+    public function testUpdateChangesProjectAndConclusionsAndLeavesUntouchedWhenAbsent(): void
     {
         $id = $this->make()['id'];
         self::assertSame('OPF', $this->svc->update($id, ['project' => 'OPF', 'conclusions' => 'a'])['project']);
@@ -142,10 +140,10 @@ final class ProjectConclusionsTest extends DbTestCase
         self::assertSame('Erendil', $t['project']);
         self::assertSame('a', $t['conclusions'], 'conclusions absentes : inchangées');
         $t = $this->svc->update($id, ['title' => 'Autre']);
-        self::assertSame('Erendil', $t['project']);
+        self::assertSame('Erendil', $t['project'], 'clé project absente : inchangé');
         self::assertSame('a', $t['conclusions']);
-        $t = $this->svc->update($id, ['project' => null, 'conclusions' => null]);
-        self::assertNull($t['project']);
+        $t = $this->svc->update($id, ['conclusions' => null]);
+        self::assertSame('Erendil', $t['project']);
         self::assertNull($t['conclusions']);
     }
 
@@ -172,9 +170,17 @@ final class ProjectConclusionsTest extends DbTestCase
             } catch (InvalidTask $e) {
                 self::assertSame('project_invalid', $e->code());
                 self::assertSame('project', $e->details()['field']);
+                self::assertStringContainsString('Projets disponibles : ', $e->getMessage());
+                self::assertStringContainsString('OPF', $e->getMessage());
             }
         }
-        foreach ([['project', 4, 'field_type_invalid'], ['conclusions', ['a'], 'field_type_invalid'], ['conclusions', "a\0b", 'text_invalid']] as [$field, $value, $code]) {
+        try {
+            $this->svc->update($id, ['project' => null]);
+            self::fail('project_invalid attendu');
+        } catch (InvalidTask $e) {
+            self::assertSame('project_invalid', $e->code(), 'PC13 : project null refusé en modification');
+        }
+        foreach ([['project', 4, 'field_type_invalid'], ['conclusions', ['a'], 'field_type_invalid'], ['conclusions', "a\0b", 'text_invalid'], ['category', 'Pro', 'field_unknown']] as [$field, $value, $code]) {
             try {
                 $this->svc->update($id, [$field => $value]);
                 self::fail("$code attendu");
@@ -185,11 +191,13 @@ final class ProjectConclusionsTest extends DbTestCase
         }
         self::assertSame($before, $this->raw($id));
         $rows = $this->rows();
-        $this->expectException(InvalidTask::class);
-        try {
-            $this->svc->create(['title' => 't', 'category' => 'Pro', 'project' => 'x']);
-        } finally {
-            self::assertSame($rows, $this->rows());
+        foreach ([['title' => 't', 'project' => 'x'], ['title' => 't'], ['title' => 't', 'project' => null], ['title' => 't', 'project' => 'OPF', 'category' => 'Perso']] as $data) {
+            try {
+                $this->svc->create($data);
+                self::fail('InvalidTask attendue');
+            } catch (InvalidTask) {
+                self::assertSame($rows, $this->rows());
+            }
         }
     }
 
@@ -201,29 +209,33 @@ final class ProjectConclusionsTest extends DbTestCase
         $t = $this->svc->update($id, ['project' => 'OPF', 'conclusions' => 'Appris : X']);
         self::assertSame('done', $t['status']);
         self::assertSame('OPF', $t['project']);
+        self::assertSame('Perso', $t['category'], 'PC9 : la catégorie suit le projet, même terminée');
         self::assertSame('Appris : X', $t['conclusions']);
     }
 
     public function testProjectFilterAloneAndAndedWithStatusAndCategory(): void
     {
-        $a = $this->make(['title' => 'a', 'project' => 'OPF', 'category' => 'Pro'])['id'];
-        $b = $this->make(['title' => 'b', 'project' => 'OPF', 'category' => 'Perso'])['id'];
-        $c = $this->make(['title' => 'c', 'project' => 'Jardin/Maison', 'category' => 'Perso'])['id'];
-        $this->make(['title' => 'd']);
+        $a = $this->make(['title' => 'a', 'project' => 'MS-HR'])['id'];
+        $b = $this->make(['title' => 'b', 'project' => 'OPF'])['id'];
+        $c = $this->make(['title' => 'c', 'project' => 'Jardin/Maison'])['id'];
+        $d = $this->make(['title' => 'd', 'project' => 'OPF'])['id'];
         $ids = fn (array $f): array => array_column($this->svc->list($f), 'id');
-        self::assertSame([$a, $b], $ids(['project' => 'OPF']));
+        self::assertSame([$b, $d], $ids(['project' => 'OPF']));
         self::assertSame([$c], $ids(['project' => 'Jardin/Maison']));
         self::assertSame([], $ids(['project' => 'Erendil']));
-        self::assertSame([$b], $ids(['project' => 'OPF', 'category' => 'Perso']));
-        $this->svc->changeStatus($a, 'in_progress');
-        self::assertSame([$a], $ids(['project' => 'OPF', 'status' => 'in_progress']));
+        self::assertSame([$b, $d], $ids(['project' => 'OPF', 'category' => 'Perso']));
+        self::assertSame([], $ids(['project' => 'OPF', 'category' => 'Pro']));
+        self::assertSame([$a], $ids(['category' => 'Pro']));
+        $this->svc->changeStatus($b, 'in_progress');
+        self::assertSame([$b], $ids(['project' => 'OPF', 'status' => 'in_progress']));
         self::assertSame([], $ids(['project' => 'Jardin/Maison', 'status' => 'in_progress']));
-        foreach (['', 'opf'] as $bad) {
+        foreach (['', 'opf', 'Autre'] as $bad) {
             try {
                 $this->svc->list(['project' => $bad]);
                 self::fail('project_invalid attendu');
             } catch (InvalidTask $e) {
                 self::assertSame('project_invalid', $e->code());
+                self::assertSame('project', $e->details()['field']);
             }
         }
     }
@@ -236,22 +248,13 @@ final class ProjectConclusionsTest extends DbTestCase
         self::assertSame('MS-HR', $r['task']['project']);
         self::assertSame('à garder', $r['task']['conclusions']);
         $next = $r['next_occurrence'];
-        self::assertSame('MS-HR', $next['project']);
+        self::assertSame(['MS-HR', 'Pro'], [$next['project'], $next['category']]);
         self::assertNull($next['conclusions']);
         self::assertSame($next, $this->svc->get($next['id']));
         // La réouverture conserve projet et conclusions.
         $re = $this->svc->changeStatus($id, 'todo')['task'];
         self::assertSame('MS-HR', $re['project']);
         self::assertSame('à garder', $re['conclusions']);
-    }
-
-    public function testCompletingARecurringTaskWithoutProjectCopiesNull(): void
-    {
-        $id = $this->make(['due_date' => '2026-01-31', 'recurrence' => ['interval' => 1, 'unit' => 'day']])['id'];
-        $this->svc->changeStatus($id, 'in_progress');
-        $next = $this->svc->changeStatus($id, 'done')['next_occurrence'];
-        self::assertNull($next['project']);
-        self::assertNull($next['conclusions']);
     }
 
     public function testCompletingANonRecurringTaskCreatesNothing(): void
@@ -271,23 +274,21 @@ final class ProjectConclusionsTest extends DbTestCase
         } catch (InvalidTask $e) {
             self::assertSame('status_not_alone', $e->code());
         }
-        self::assertNull($this->svc->get($id)['project']);
+        self::assertSame('Divers Pro', $this->svc->get($id)['project']);
     }
 
     // --- REST ---
 
     public function testRestPostPatchGetAndListCarryTheFields(): void
     {
-        $r = $this->rest('POST', '/api/v1/tasks', ['title' => 'T', 'category' => 'Pro', 'project' => 'Erendil', 'conclusions' => 'ok']);
+        $r = $this->rest('POST', '/api/v1/tasks', ['title' => 'T', 'project' => 'Erendil', 'conclusions' => 'ok']);
         self::assertSame(201, $r->status, $r->body);
         $t = $this->json($r);
-        self::assertSame('Erendil', $t['project']);
-        self::assertSame('ok', $t['conclusions']);
-        $r = $this->rest('PATCH', '/api/v1/tasks/' . $t['id'], ['project' => null]);
-        self::assertSame(200, $r->status);
+        self::assertSame(['Erendil', 'Perso', 'ok'], [$t['project'], $t['category'], $t['conclusions']]);
+        $r = $this->rest('PATCH', '/api/v1/tasks/' . $t['id'], ['project' => 'MS-HR']);
+        self::assertSame(200, $r->status, $r->body);
         $t = $this->json($r);
-        self::assertNull($t['project']);
-        self::assertSame('ok', $t['conclusions']);
+        self::assertSame(['MS-HR', 'Pro', 'ok'], [$t['project'], $t['category'], $t['conclusions']]);
         self::assertSame($t, $this->json($this->rest('GET', '/api/v1/tasks/' . $t['id'])));
         $list = $this->json($this->rest('GET', '/api/v1/tasks'));
         self::assertArrayHasKey('project', $list[0]);
@@ -301,8 +302,10 @@ final class ProjectConclusionsTest extends DbTestCase
         foreach ([
             [['project' => 'opf'], 'project_invalid', 'project'],
             [['project' => ''], 'project_invalid', 'project'],
+            [['project' => null], 'project_invalid', 'project'],
             [['project' => 3], 'field_type_invalid', 'project'],
             [['project' => ['OPF']], 'field_type_invalid', 'project'],
+            [['category' => 'Pro'], 'field_unknown', 'category'],
             [['conclusions' => 3], 'field_type_invalid', 'conclusions'],
             [['conclusions' => "a\u{0000}b"], 'text_invalid', 'conclusions'],
         ] as [$body, $code, $field]) {
@@ -311,25 +314,30 @@ final class ProjectConclusionsTest extends DbTestCase
             $e = $this->json($r)['error'];
             self::assertSame($code, $e['code']);
             self::assertSame($field, $e['details']['field']);
-            $r = $this->rest('POST', '/api/v1/tasks', ['title' => 't', 'category' => 'Pro'] + $body);
+            $r = $this->rest('POST', '/api/v1/tasks', $body + ['title' => 't', 'project' => 'OPF']);
             self::assertSame(422, $r->status, $r->body);
             self::assertSame($code, $this->json($r)['error']['code']);
         }
+        $r = $this->rest('POST', '/api/v1/tasks', ['title' => 't']);
+        self::assertSame([422, 'project_invalid'], [$r->status, $this->json($r)['error']['code']], 'projet obligatoire à la création');
         self::assertSame($before, $this->raw($id));
         self::assertSame(1, $this->rows());
     }
 
     public function testRestProjectFilter(): void
     {
-        $a = $this->make(['title' => 'a', 'project' => 'Jardin/Maison', 'category' => 'Pro'])['id'];
-        $b = $this->make(['title' => 'b', 'project' => 'Jardin/Maison', 'category' => 'Perso'])['id'];
+        $a = $this->make(['title' => 'a', 'project' => 'Jardin/Maison'])['id'];
+        $b = $this->make(['title' => 'b', 'project' => 'Jardin/Maison'])['id'];
         $this->make(['title' => 'c', 'project' => 'OPF']);
+        $m = $this->make(['title' => 'd', 'project' => 'MS-HR'])['id'];
         $ids = fn (array $q): array => array_column($this->json($this->rest('GET', '/api/v1/tasks', null, $q)), 'id');
         self::assertSame([$a, $b], $ids(['project' => 'Jardin/Maison'])); // valeur décodée de Jardin%2FMaison
-        self::assertSame([$b], $ids(['project' => 'Jardin/Maison', 'category' => 'Perso']));
+        self::assertSame([$a, $b], $ids(['project' => 'Jardin/Maison', 'category' => 'Perso']));
+        self::assertSame([], $ids(['project' => 'Jardin/Maison', 'category' => 'Pro']), 'ET : catégorie du projet');
+        self::assertSame([$m], $ids(['category' => 'Pro']));
         self::assertSame([], $ids(['project' => 'Erendil']));
-        self::assertCount(3, $ids([]));
-        self::assertCount(3, $ids(['inconnu' => 'x']), 'paramètre inconnu ignoré');
+        self::assertCount(4, $ids([]));
+        self::assertCount(4, $ids(['inconnu' => 'x']), 'paramètre inconnu ignoré');
         foreach ([['project' => '', 'project_invalid'], ['project' => 'ms-hr', 'project_invalid'], ['project' => ['x'], 'field_type_invalid']] as $q) {
             $code = array_pop($q);
             $r = $this->rest('GET', '/api/v1/tasks', null, $q);
@@ -348,38 +356,20 @@ final class ProjectConclusionsTest extends DbTestCase
         self::assertSame('MS-HR', $body['project']);
         self::assertSame('x', $body['conclusions']);
         self::assertSame('MS-HR', $body['next_occurrence']['project']);
+        self::assertSame('Pro', $body['next_occurrence']['category']);
         self::assertNull($body['next_occurrence']['conclusions']);
     }
 
     // --- MCP ---
 
-    public function testMcpToolsDeclareTheFields(): void
-    {
-        $r = $this->kernel->handle(new Request('POST', '/mcp', ['host' => self::HOST, 'content-type' => 'application/json'], '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'));
-        $tools = [];
-        foreach ($this->json($r)['result']['tools'] as $t) {
-            $tools[$t['name']] = $t['inputSchema'];
-        }
-        foreach (['create_task', 'update_task'] as $name) {
-            $p = $tools[$name]['properties'];
-            self::assertSame([...TaskValidator::PROJECTS, null], $p['project']['enum']);
-            self::assertSame(['string', 'null'], $p['project']['type']);
-            self::assertSame(['string', 'null'], $p['conclusions']['type']);
-            self::assertNotContains('project', $tools[$name]['required']);
-            self::assertNotContains('conclusions', $tools[$name]['required']);
-        }
-        self::assertSame(TaskValidator::PROJECTS, $tools['list_tasks']['properties']['project']['enum']);
-        self::assertSame(['id', 'status'], array_keys($tools['change_task_status']['properties']));
-    }
-
     public function testMcpCreateUpdateListAndCompletion(): void
     {
-        $created = json_decode($this->mcpText('create_task', ['title' => 'M', 'category' => 'Perso', 'project' => 'OPF', 'conclusions' => 'c', 'due_date' => '2026-05-31', 'recurrence' => ['interval' => 1, 'unit' => 'month']], false), true);
-        self::assertSame('OPF', $created['project']);
+        $created = json_decode($this->mcpText('create_task', ['title' => 'M', 'project' => 'OPF', 'conclusions' => 'c', 'due_date' => '2026-05-31', 'recurrence' => ['interval' => 1, 'unit' => 'month']], false), true);
+        self::assertSame(['OPF', 'Perso'], [$created['project'], $created['category']]);
         self::assertSame('c', $created['conclusions']);
         self::assertSame($created, $this->json($this->rest('GET', '/api/v1/tasks/' . $created['id'])), 'même Task que REST');
-        $updated = json_decode($this->mcpText('update_task', ['id' => $created['id'], 'project' => null, 'conclusions' => 'd'], false), true);
-        self::assertNull($updated['project']);
+        $updated = json_decode($this->mcpText('update_task', ['id' => $created['id'], 'conclusions' => 'd'], false), true);
+        self::assertSame('OPF', $updated['project']);
         self::assertSame('d', $updated['conclusions']);
         $this->mcpText('update_task', ['id' => $created['id'], 'project' => 'Erendil'], false);
         $this->make(['title' => 'autre', 'project' => 'OPF']);
@@ -395,11 +385,11 @@ final class ProjectConclusionsTest extends DbTestCase
     public function testMcpErrorsAreByteIdenticalToRest(): void
     {
         $id = $this->make()['id'];
-        foreach ([['project' => 'ms-hr'], ['project' => ''], ['project' => 2], ['conclusions' => 2], ['conclusions' => "a\u{0000}"]] as $body) {
+        foreach ([['project' => 'ms-hr'], ['project' => ''], ['project' => null], ['project' => 2], ['category' => 'Pro'], ['conclusions' => 2], ['conclusions' => "a\u{0000}"]] as $body) {
             $text = $this->mcpText('update_task', ['id' => $id] + $body, true);
             self::assertSame($this->rest('PATCH', "/api/v1/tasks/$id", $body)->body, $text);
-            $text = $this->mcpText('create_task', ['title' => 't', 'category' => 'Pro'] + $body, true);
-            self::assertSame($this->rest('POST', '/api/v1/tasks', ['title' => 't', 'category' => 'Pro'] + $body)->body, $text);
+            $text = $this->mcpText('create_task', $body + ['title' => 't', 'project' => 'OPF'], true);
+            self::assertSame($this->rest('POST', '/api/v1/tasks', $body + ['title' => 't', 'project' => 'OPF'])->body, $text);
         }
         self::assertSame($this->rest('GET', '/api/v1/tasks', null, ['project' => 'x'])->body, $this->mcpText('list_tasks', ['project' => 'x'], true));
         self::assertSame(1, $this->rows());
@@ -410,37 +400,41 @@ final class ProjectConclusionsTest extends DbTestCase
 
     public function testPortalCreateEditAndDetail(): void
     {
-        $r = $this->portalPost('/tasks', ['title' => 'P', 'category' => 'Pro', 'project' => 'Jardin/Maison', 'conclusions' => "ligne <b>1</b>\nligne 2"]);
+        $r = $this->portalPost('/tasks', ['title' => 'P', 'project' => 'Jardin/Maison', 'conclusions' => "ligne <b>1</b>\nligne 2"]);
         self::assertSame(303, $r->status, $r->body);
         $t = $this->svc->list()[0];
-        self::assertSame('Jardin/Maison', $t['project']);
+        self::assertSame(['Jardin/Maison', 'Perso'], [$t['project'], $t['category']]);
         $detail = $this->portalGet('/tasks/' . $t['id'])->body;
         self::assertStringContainsString('Jardin/Maison', $detail);
+        self::assertStringContainsString('Perso (selon le projet)', $detail);
         self::assertStringContainsString('ligne &lt;b&gt;1&lt;/b&gt;', $detail);
         self::assertStringNotContainsString('<b>1</b>', $detail);
         $edit = $this->portalGet('/tasks/' . $t['id'] . '/edit')->body;
         self::assertMatchesRegularExpression('/<option value="Jardin\/Maison" selected>/', $edit);
         self::assertStringContainsString('for="f-project"', $edit);
         self::assertStringContainsString('for="f-conclusions"', $edit);
-        // Option vide et champ vidé effacent.
-        $r = $this->portalPost('/tasks/' . $t['id'], ['title' => 'P', 'category' => 'Pro', 'project' => '', 'conclusions' => '']);
+        self::assertStringNotContainsString('f-category', $edit, 'plus de champ Catégorie dans le formulaire');
+        // Champ conclusions vidé : effacé; le projet reste obligatoire.
+        $r = $this->portalPost('/tasks/' . $t['id'], ['title' => 'P', 'project' => 'OPF', 'conclusions' => '']);
         self::assertSame(303, $r->status);
         $t = $this->svc->get($t['id']);
-        self::assertNull($t['project']);
+        self::assertSame('OPF', $t['project']);
         self::assertNull($t['conclusions']);
-        $detail = $this->portalGet('/tasks/' . $t['id'])->body;
-        self::assertStringContainsString('Aucun', $detail);
-        self::assertStringContainsString('Aucune', $detail);
+        self::assertStringContainsString('Aucune', $this->portalGet('/tasks/' . $t['id'])->body);
+        $r = $this->portalPost('/tasks/' . $t['id'], ['title' => 'P', 'project' => '', 'conclusions' => '']);
+        self::assertSame(422, $r->status, 'projet vide = project null : refusé');
+        self::assertStringContainsString('id="e-project"', $r->body);
+        self::assertSame('OPF', $this->svc->get($t['id'])['project']);
     }
 
     public function testPortalForgedProjectIsRefusedNearTheFieldAndKeepsInput(): void
     {
         $id = $this->make(['project' => 'OPF'])['id'];
         $before = $this->raw($id);
-        $form = ['title' => 'Saisie conservée', 'category' => 'Pro', 'project' => 'forgé', 'conclusions' => self::XSS];
+        $form = ['title' => 'Saisie conservée', 'project' => 'forgé', 'conclusions' => self::XSS];
         $r = $this->portalPost("/tasks/$id", $form);
         self::assertSame(422, $r->status);
-        self::assertStringContainsString('Le projet doit être MS-HR, Jardin/Maison, OPF ou Erendil.', $r->body);
+        self::assertStringContainsString('Projet inconnu. Projets disponibles : ', $r->body);
         self::assertStringContainsString('href="#f-project"', $r->body);
         self::assertStringContainsString('id="e-project"', $r->body);
         self::assertStringContainsString('Saisie conservée', $r->body);
@@ -451,9 +445,24 @@ final class ProjectConclusionsTest extends DbTestCase
         self::assertSame(422, $r->status);
         self::assertSame(1, $this->rows());
         // Texte invalide : message près du champ conclusions.
-        $r = $this->portalPost('/tasks', ['title' => 't', 'category' => 'Pro', 'conclusions' => "a\0b"]);
+        $r = $this->portalPost('/tasks', ['title' => 't', 'project' => 'OPF', 'conclusions' => "a\0b"]);
         self::assertSame(422, $r->status);
         self::assertStringContainsString('id="e-conclusions"', $r->body);
+    }
+
+    public function testPortalIgnoresAForgedCategoryField(): void
+    {
+        // H7 : le portail ignore un champ `category` forgé (comme tout champ inconnu); la catégorie vient du projet.
+        $r = $this->portalPost('/tasks', ['title' => 'Forgée', 'project' => 'OPF', 'category' => 'Pro']);
+        self::assertSame(303, $r->status, $r->body);
+        $t = $this->svc->list()[0];
+        self::assertSame(['OPF', 'Perso'], [$t['project'], $t['category']]);
+        $r = $this->portalPost('/tasks/' . $t['id'], ['title' => 'Forgée 2', 'project' => 'OPF', 'category' => 'Pro']);
+        self::assertSame(303, $r->status, $r->body);
+        self::assertSame('Perso', $this->svc->get($t['id'])['category']);
+        // Le garde reste le cas d'usage : un appel direct refuse `category`.
+        $this->expectException(InvalidTask::class);
+        $this->svc->update($t['id'], ['category' => 'Pro']);
     }
 
     public function testPortalXssInConclusionsIsEscapedInDetail(): void
@@ -466,10 +475,10 @@ final class ProjectConclusionsTest extends DbTestCase
 
     public function testPortalListColumnAndExactFilterAndedWithOthers(): void
     {
-        $a = $this->make(['title' => 'Alpha', 'project' => 'OPF', 'category' => 'Pro'])['id'];
-        $this->make(['title' => 'Beta', 'project' => 'OPF', 'category' => 'Perso']);
+        $a = $this->make(['title' => 'Alpha', 'project' => 'OPF'])['id'];
+        $this->make(['title' => 'Beta', 'project' => 'OPF']);
         $this->make(['title' => 'Gamma', 'project' => 'Erendil']);
-        $this->make(['title' => 'Delta']);
+        $this->make(['title' => 'Delta', 'project' => 'MS-HR']);
         $full = $this->portalGet('/tasks')->body;
         self::assertStringContainsString('<th scope="col">Projet</th>', $full);
         self::assertStringContainsString('for="f-project"', $full);
@@ -482,9 +491,11 @@ final class ProjectConclusionsTest extends DbTestCase
         self::assertStringNotContainsString('Gamma', $body);
         self::assertStringNotContainsString('Delta', $body);
         self::assertStringContainsString('projet <strong>OPF</strong>', $body);
-        $body = $this->portalGet('/tasks', ['project' => 'OPF', 'category' => 'Perso'])->body;
+        $body = $this->portalGet('/tasks', ['project' => 'OPF', 'category' => 'Pro'])->body;
+        self::assertStringNotContainsString('Alpha', $body, 'ET : OPF est Perso');
+        $body = $this->portalGet('/tasks', ['category' => 'Pro'])->body;
+        self::assertStringContainsString('Delta', $body);
         self::assertStringNotContainsString('Alpha', $body);
-        self::assertStringContainsString('Beta', $body);
         $this->svc->changeStatus($a, 'in_progress');
         $this->svc->changeStatus($a, 'done');
         $body = $this->portalGet('/tasks', ['project' => 'OPF', 'hide_done' => '1'])->body;
@@ -514,8 +525,8 @@ final class ProjectConclusionsTest extends DbTestCase
     public function testPortalAndRestAgreeOnProjectValidation(): void
     {
         foreach (['ms-hr', 'Autre'] as $value) {
-            $rest = $this->json($this->rest('POST', '/api/v1/tasks', ['title' => 't', 'category' => 'Pro', 'project' => $value]))['error'];
-            $portal = $this->portalPost('/tasks', ['title' => 't', 'category' => 'Pro', 'project' => $value]);
+            $rest = $this->json($this->rest('POST', '/api/v1/tasks', ['title' => 't', 'project' => $value]))['error'];
+            $portal = $this->portalPost('/tasks', ['title' => 't', 'project' => $value]);
             self::assertSame(422, $portal->status);
             self::assertStringContainsString(htmlspecialchars($rest['message'], ENT_QUOTES), $portal->body);
         }

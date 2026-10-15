@@ -31,9 +31,7 @@ final class PortalTasksTest extends DbTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->pdo->exec('DROP TABLE IF EXISTS task_dependencies, tasks, schema_migrations CASCADE');
-        $this->pdo->exec('DROP FUNCTION IF EXISTS task_dependencies_check_cycle()');
-        (new Migrator($this->pdo, __DIR__ . '/../../database/migrations'))->migrate();
+        $this->migrateFresh();
         $this->session = new ArraySession();
         $this->kernel = Bootstrap::kernel($this->config, $this->session);
         $this->service = Bootstrap::taskService($this->config);
@@ -58,7 +56,7 @@ final class PortalTasksTest extends DbTestCase
     /** @return array<string,mixed> */
     private function seed(array $data = []): array
     {
-        return $this->service->create($data + ['title' => 'Tâche', 'category' => 'Pro']);
+        return $this->service->create($data + ['title' => 'Tâche', 'project' => 'Divers Pro']);
     }
 
     private function rows(): int
@@ -107,7 +105,7 @@ final class PortalTasksTest extends DbTestCase
         $this->assertHtml($form, 200);
         // Le jeton est lu dans la page de formulaire précédente.
         self::assertSame(1, preg_match('/name="_csrf" value="([0-9a-f]{64})"/', $form->body, $m));
-        $created = $this->post('/tasks', ['_csrf' => $m[1], 'title' => 'Préparer le budget', 'category' => 'Pro'], withToken: false);
+        $created = $this->post('/tasks', ['_csrf' => $m[1], 'title' => 'Préparer le budget', 'project' => 'Divers Pro'], withToken: false);
         $this->assertRedirect($created, '/tasks/1');
 
         $detail = $this->get('/tasks/1');
@@ -120,7 +118,7 @@ final class PortalTasksTest extends DbTestCase
         $edit = $this->get('/tasks/1/edit');
         $this->assertHtml($edit, 200);
         self::assertStringContainsString('value="Préparer le budget"', $edit->body);
-        $this->assertRedirect($this->post('/tasks/1', ['title' => 'Budget 2027', 'category' => 'Perso']), '/tasks/1');
+        $this->assertRedirect($this->post('/tasks/1', ['title' => 'Budget 2027', 'project' => 'Divers Perso']), '/tasks/1');
         self::assertStringContainsString('Tâche enregistrée.', $this->get('/tasks/1')->body);
 
         $list = $this->get('/tasks');
@@ -140,7 +138,7 @@ final class PortalTasksTest extends DbTestCase
 
     public function testMinimalAndFullCreationAreKept(): void
     {
-        $this->assertRedirect($this->post('/tasks', ['title' => 'Minimale', 'category' => 'Perso', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => '']), '/tasks/1');
+        $this->assertRedirect($this->post('/tasks', ['title' => 'Minimale', 'project' => 'Divers Perso', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => '']), '/tasks/1');
         $minimal = $this->service->get(1);
         self::assertNull($minimal['due_date']);
         self::assertNull($minimal['recurrence']);
@@ -148,7 +146,7 @@ final class PortalTasksTest extends DbTestCase
         self::assertNull($minimal['description']);
 
         $this->assertRedirect($this->post('/tasks', [
-            'title' => 'Complète', 'category' => 'Pro', 'due_date' => '2026-02-28',
+            'title' => 'Complète', 'project' => 'Divers Pro', 'due_date' => '2026-02-28',
             'recurrence_interval' => '2', 'recurrence_unit' => 'month', 'estimated_minutes' => '90',
             'description' => "Ligne 1\nLigne 2",
         ]), '/tasks/2');
@@ -218,11 +216,11 @@ final class PortalTasksTest extends DbTestCase
 
     private function populate(): void
     {
-        $this->seed(['title' => 'Pro todo', 'category' => 'Pro', 'due_date' => '2026-01-01']);
-        $b = $this->seed(['title' => 'Pro encours', 'category' => 'Pro', 'due_date' => '2026-01-02']);
-        $c = $this->seed(['title' => 'Pro finie', 'category' => 'Pro', 'due_date' => '2026-01-03']);
-        $this->seed(['title' => 'Perso todo', 'category' => 'Perso', 'due_date' => '2026-01-04']);
-        $d = $this->seed(['title' => 'Perso finie', 'category' => 'Perso']);
+        $this->seed(['title' => 'Pro todo', 'project' => 'Divers Pro', 'due_date' => '2026-01-01']);
+        $b = $this->seed(['title' => 'Pro encours', 'project' => 'Divers Pro', 'due_date' => '2026-01-02']);
+        $c = $this->seed(['title' => 'Pro finie', 'project' => 'Divers Pro', 'due_date' => '2026-01-03']);
+        $this->seed(['title' => 'Perso todo', 'project' => 'Divers Perso', 'due_date' => '2026-01-04']);
+        $d = $this->seed(['title' => 'Perso finie', 'project' => 'Divers Perso']);
         $this->service->changeStatus($b['id'], 'in_progress');
         $this->service->changeStatus($c['id'], 'in_progress');
         $this->service->changeStatus($c['id'], 'done');
@@ -256,9 +254,9 @@ final class PortalTasksTest extends DbTestCase
     public function testFilterStateStaysVisibleAndEmptyMessagesDiffer(): void
     {
         $this->populate();
-        $body = $this->get('/tasks', ['status' => 'in_progress', 'category' => 'Perso', 'hide_done' => '1'])->body;
+        $body = $this->get('/tasks', ['status' => 'in_progress', 'project' => 'Divers Perso', 'hide_done' => '1'])->body;
         self::assertStringContainsString('<option value="in_progress" selected>En cours</option>', $body);
-        self::assertStringContainsString('<option value="Perso" selected>Perso</option>', $body);
+        self::assertStringContainsString('<option value="Divers Perso" selected>Divers Perso</option>', $body);
         self::assertMatchesRegularExpression('/<input type="checkbox" id="f-hide-done" name="hide_done" value="1" checked>/', $body);
         self::assertStringContainsString('Aucune tâche ne correspond aux filtres.', $body);
         self::assertStringContainsString('Filtres actifs', $body);
@@ -296,14 +294,15 @@ final class PortalTasksTest extends DbTestCase
     /** @return array<string,array{array<string,string>,string,string}> saisie, code attendu, champ (suffixe d'id) */
     public static function invalidForms(): array
     {
-        $ok = ['title' => 'T', 'category' => 'Pro', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => ''];
+        $ok = ['title' => 'T', 'project' => 'Divers Pro', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => ''];
 
         return [
             'titre vide' => [['title' => ''] + $ok, 'title_blank', 'title'],
             'titre blanc' => [['title' => " \t\n "] + $ok, 'title_blank', 'title'],
             'titre trop long' => [['title' => str_repeat('é', 256)] + $ok, 'title_too_long', 'title'],
-            'catégorie vide' => [['category' => ''] + $ok, 'category_invalid', 'category'],
-            'catégorie minuscule' => [['category' => 'pro'] + $ok, 'category_invalid', 'category'],
+            'projet vide (aucun choix)' => [['project' => ''] + $ok, 'project_invalid', 'project'],
+            'projet inconnu' => [['project' => 'Inconnu'] + $ok, 'project_invalid', 'project'],
+            'projet casse' => [['project' => 'divers pro'] + $ok, 'project_invalid', 'project'],
             'date inexistante' => [['due_date' => '2026-02-30'] + $ok, 'due_date_invalid', 'due_date'],
             'date non ISO' => [['due_date' => '28/02/2026'] + $ok, 'due_date_invalid', 'due_date'],
             'périodicité sans unité' => [['due_date' => '2026-01-01', 'recurrence_interval' => '2'] + $ok, 'recurrence_incomplete', 'recurrence'],
@@ -355,8 +354,8 @@ final class PortalTasksTest extends DbTestCase
                 self::assertStringContainsString('value="' . htmlspecialchars($form[$name], ENT_QUOTES) . '"', $r->body);
             }
         }
-        if ($form['category'] !== '' && in_array($form['category'], ['Pro', 'Perso'], true)) {
-            self::assertStringContainsString('<option value="' . $form['category'] . '" selected>', $r->body);
+        if ($form['project'] === 'Divers Pro') {
+            self::assertStringContainsString('<option value="Divers Pro" selected>', $r->body);
         }
         if ($form['recurrence_unit'] === 'day') {
             self::assertStringContainsString('<option value="day" selected>', $r->body);
@@ -365,7 +364,7 @@ final class PortalTasksTest extends DbTestCase
 
     public function testRecurrenceWithoutDueDateIsShownUnderBothFields(): void
     {
-        $r = $this->post('/tasks', ['title' => 'T', 'category' => 'Pro', 'due_date' => '', 'recurrence_interval' => '1', 'recurrence_unit' => 'week']);
+        $r = $this->post('/tasks', ['title' => 'T', 'project' => 'Divers Pro', 'due_date' => '', 'recurrence_interval' => '1', 'recurrence_unit' => 'week']);
         self::assertSame(1, substr_count($r->body, 'id="e-due_date"'));
         self::assertSame(1, substr_count($r->body, 'id="e-recurrence"'));
         self::assertSame(1, substr_count($r->body, '<li><a href="#f-due_date">'), 'une seule entrée au résumé');
@@ -374,16 +373,16 @@ final class PortalTasksTest extends DbTestCase
 
     public function testPortalSpecificMessagesDoNotLeakTechnicalCodes(): void
     {
-        $r = $this->post('/tasks', ['title' => 'T', 'category' => 'Pro', 'due_date' => '2026-02-30']);
+        $r = $this->post('/tasks', ['title' => 'T', 'project' => 'Divers Pro', 'due_date' => '2026-02-30']);
         self::assertStringContainsString('Date invalide.', $r->body);
         self::assertStringNotContainsString('AAAA-MM-JJ', $r->body);
-        $r = $this->post('/tasks', ['title' => 'T', 'category' => 'Pro', 'due_date' => '2026-01-01', 'recurrence_interval' => '2', 'recurrence_unit' => 'fortnight']);
+        $r = $this->post('/tasks', ['title' => 'T', 'project' => 'Divers Pro', 'due_date' => '2026-01-01', 'recurrence_interval' => '2', 'recurrence_unit' => 'fortnight']);
         self::assertStringNotContainsString('day, week', $r->body);
     }
 
     public function testForgedExtraFieldsCannotReachTheUseCase(): void
     {
-        $this->assertRedirect($this->post('/tasks', ['title' => 'T', 'category' => 'Pro', 'status' => 'done', 'required_actions' => [1], 'id' => '99', 'completed_at' => '2026-01-01']), '/tasks/1');
+        $this->assertRedirect($this->post('/tasks', ['title' => 'T', 'project' => 'Divers Pro', 'status' => 'done', 'required_actions' => [1], 'id' => '99', 'completed_at' => '2026-01-01']), '/tasks/1');
         $task = $this->service->get(1);
         self::assertSame('todo', $task['status']);
         self::assertNull($task['completed_at']);
@@ -395,7 +394,7 @@ final class PortalTasksTest extends DbTestCase
     public function testUpdateChangesAndClearsOptionalFields(): void
     {
         $t = $this->seed(['title' => 'Avant', 'due_date' => '2026-03-01', 'estimated_minutes' => 30, 'description' => 'd']);
-        $this->assertRedirect($this->post('/tasks/' . $t['id'], ['title' => 'Après', 'category' => 'Perso', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => '']), '/tasks/' . $t['id']);
+        $this->assertRedirect($this->post('/tasks/' . $t['id'], ['title' => 'Après', 'project' => 'Divers Perso', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => '']), '/tasks/' . $t['id']);
         $after = $this->service->get($t['id']);
         self::assertSame('Après', $after['title']);
         self::assertSame('Perso', $after['category']);
@@ -406,10 +405,10 @@ final class PortalTasksTest extends DbTestCase
 
     public function testEditFormIsPrefilledWithEveryField(): void
     {
-        $t = $this->seed(['title' => 'Complète "x"', 'category' => 'Perso', 'due_date' => '2026-03-01', 'recurrence' => ['interval' => 3, 'unit' => 'week'], 'estimated_minutes' => 45, 'description' => "l1\nl2"]);
+        $t = $this->seed(['title' => 'Complète "x"', 'project' => 'Divers Perso', 'due_date' => '2026-03-01', 'recurrence' => ['interval' => 3, 'unit' => 'week'], 'estimated_minutes' => 45, 'description' => "l1\nl2"]);
         $body = $this->get('/tasks/' . $t['id'] . '/edit')->body;
         foreach ([
-            'value="Complète &quot;x&quot;"', '<option value="Perso" selected>', 'value="2026-03-01"', 'name="recurrence_interval" min="1" step="1" value="3"',
+            'value="Complète &quot;x&quot;"', '<option value="Divers Perso" selected>', 'value="2026-03-01"', 'name="recurrence_interval" min="1" step="1" value="3"',
             '<option value="week" selected>', 'name="estimated_minutes" min="1" step="1" value="45"', ">l1\nl2</textarea>",
             'action="/tasks/' . $t['id'] . '"', 'maxlength="255"', '255 caractères au plus',
         ] as $expected) {
@@ -421,7 +420,7 @@ final class PortalTasksTest extends DbTestCase
     {
         $t = $this->seed(['title' => 'Périodique', 'due_date' => '2026-03-01', 'recurrence' => ['interval' => 1, 'unit' => 'month']]);
         $before = $this->snapshot();
-        $r = $this->post('/tasks/' . $t['id'], ['title' => 'Périodique', 'category' => 'Pro', 'due_date' => '', 'recurrence_interval' => '1', 'recurrence_unit' => 'month', 'estimated_minutes' => '', 'description' => '']);
+        $r = $this->post('/tasks/' . $t['id'], ['title' => 'Périodique', 'project' => 'Divers Pro', 'due_date' => '', 'recurrence_interval' => '1', 'recurrence_unit' => 'month', 'estimated_minutes' => '', 'description' => '']);
         $this->assertHtml($r, 422);
         self::assertStringContainsString('Une tâche périodique exige une date butée.', $r->body);
         self::assertSame($before, $this->snapshot(), 'tâche inchangée');
@@ -432,10 +431,10 @@ final class PortalTasksTest extends DbTestCase
     {
         $t = $this->seed(['title' => 'Originale']);
         $before = $this->snapshot();
-        $r = $this->post('/tasks/' . $t['id'], ['title' => '', 'category' => 'Perso', 'description' => 'saisie conservée']);
+        $r = $this->post('/tasks/' . $t['id'], ['title' => '', 'project' => 'Divers Perso', 'description' => 'saisie conservée']);
         $this->assertHtml($r, 422);
         self::assertStringContainsString('>saisie conservée</textarea>', $r->body);
-        self::assertStringContainsString('<option value="Perso" selected>', $r->body);
+        self::assertStringContainsString('<option value="Divers Perso" selected>', $r->body);
         self::assertStringContainsString('action="/tasks/' . $t['id'] . '"', $r->body);
         self::assertSame($before, $this->snapshot());
     }
@@ -445,7 +444,7 @@ final class PortalTasksTest extends DbTestCase
         $t = $this->seed(['title' => 'Stable']);
         $this->pdo->exec("UPDATE tasks SET updated_at = '2020-01-01T00:00:00Z'");
         $before = $this->snapshot();
-        $this->assertRedirect($this->post('/tasks/' . $t['id'], ['title' => 'Stable', 'category' => 'Pro']), '/tasks/' . $t['id']);
+        $this->assertRedirect($this->post('/tasks/' . $t['id'], ['title' => 'Stable', 'project' => 'Divers Pro']), '/tasks/' . $t['id']);
         self::assertSame($before, $this->snapshot());
     }
 
@@ -455,7 +454,7 @@ final class PortalTasksTest extends DbTestCase
         $t = $this->seed(['title' => 'Principale']);
         $this->service->addRequiredAction($t['id'], $req['id']);
         $this->service->changeStatus($t['id'], 'in_progress');
-        $this->assertRedirect($this->post('/tasks/' . $t['id'], ['title' => 'Renommée', 'category' => 'Pro']), '/tasks/' . $t['id']);
+        $this->assertRedirect($this->post('/tasks/' . $t['id'], ['title' => 'Renommée', 'project' => 'Divers Pro']), '/tasks/' . $t['id']);
         $after = $this->service->get($t['id']);
         self::assertSame('in_progress', $after['status']);
         self::assertCount(1, $after['required_actions']);
@@ -519,7 +518,7 @@ final class PortalTasksTest extends DbTestCase
             self::assertStringContainsString('Tâche introuvable.', $r->body);
         }
         foreach (['/tasks/999', '/tasks/999/delete'] as $path) {
-            $this->assertHtml($this->post($path, ['title' => 'x', 'category' => 'Pro']), 404);
+            $this->assertHtml($this->post($path, ['title' => 'x', 'project' => 'Divers Pro']), 404);
         }
         foreach (['/tasks/abc', '/tasks/0', '/tasks/-1', '/tasks/1.5', '/tasks/99999999999999999999/edit'] as $path) {
             $this->assertHtml($this->get($path), 404);
@@ -545,7 +544,7 @@ final class PortalTasksTest extends DbTestCase
             'formulaire de modification' => $this->get('/tasks/' . $req['id'] . '/edit')->body,
             'confirmation' => $this->get('/tasks/' . $req['id'] . '/delete')->body,
             'refus de suppression' => $this->post('/tasks/' . $req['id'] . '/delete')->body,
-            'saisie refusée' => $this->post('/tasks', ['title' => '', 'category' => 'Pro', 'description' => $xss, 'due_date' => $xss])->body,
+            'saisie refusée' => $this->post('/tasks', ['title' => '', 'project' => 'Divers Pro', 'description' => $xss, 'due_date' => $xss])->body,
         ];
         foreach ($pages as $name => $body) {
             self::assertStringNotContainsString('<script', $body, $name);
@@ -570,7 +569,7 @@ final class PortalTasksTest extends DbTestCase
     {
         $t = $this->seed(['title' => 'Intacte']);
         $before = $this->snapshot();
-        $form = ['title' => 'Piraté', 'category' => 'Perso'];
+        $form = ['title' => 'Piraté', 'project' => 'Divers Perso'];
         foreach ([
             'sans jeton' => [],
             'jeton vide' => ['_csrf' => ''],
@@ -591,17 +590,17 @@ final class PortalTasksTest extends DbTestCase
     {
         $before = $this->snapshot();
         foreach (['http://evil.example', 'http://127.0.0.1:9999', 'null', 'http://127.0.0.1', 'ftp://127.0.0.1:8080', 'http://evil.example:8080'] as $origin) {
-            $r = $this->post('/tasks', ['title' => 'X', 'category' => 'Pro'], ['origin' => $origin]);
+            $r = $this->post('/tasks', ['title' => 'X', 'project' => 'Divers Pro'], ['origin' => $origin]);
             self::assertSame(403, $r->status, $origin);
         }
         self::assertSame($before, $this->snapshot());
-        self::assertSame(303, $this->post('/tasks', ['title' => 'X', 'category' => 'Pro'], ['origin' => 'http://127.0.0.1:8080'])->status);
-        self::assertSame(303, $this->post('/tasks', ['title' => 'Z', 'category' => 'Pro'])->status, 'Origin absent accepté (jeton exigé)');
+        self::assertSame(303, $this->post('/tasks', ['title' => 'X', 'project' => 'Divers Pro'], ['origin' => 'http://127.0.0.1:8080'])->status);
+        self::assertSame(303, $this->post('/tasks', ['title' => 'Z', 'project' => 'Divers Pro'])->status, 'Origin absent accepté (jeton exigé)');
     }
 
     public function testEveryGuardRefusalExplainsWhyAndWhatToDo(): void
     {
-        $form = ['title' => 'Première', 'category' => 'Pro'];
+        $form = ['title' => 'Première', 'project' => 'Divers Pro'];
         $cases = [
             'jeton absent' => [$this->post('/tasks', $form, withToken: false), 'Le formulaire est périmé ou la session a expiré'],
             'origine nulle' => [$this->post('/tasks', $form, ['origin' => 'null']), 'ne provient pas du portail lui-même'],
@@ -647,7 +646,7 @@ final class PortalTasksTest extends DbTestCase
         $t = $this->seed(['title' => 'Intacte']);
         $before = $this->snapshot();
         foreach (['/tasks', '/tasks/new', '/tasks/1', '/tasks/1/edit', '/tasks/1/delete'] as $path) {
-            $this->get($path, ['title' => 'x', 'category' => 'Perso', '_csrf' => $this->session->csrfToken(), 'status' => 'done', 'hide_done' => '1']);
+            $this->get($path, ['title' => 'x', 'project' => 'Divers Perso', '_csrf' => $this->session->csrfToken(), 'status' => 'done', 'hide_done' => '1']);
         }
         self::assertSame($before, $this->snapshot());
         self::assertSame(1, $this->rows());
@@ -673,7 +672,7 @@ final class PortalTasksTest extends DbTestCase
             self::assertMatchesRegularExpression('/<form method="post"[^>]*>\s*<input type="hidden" name="_csrf" value="[0-9a-f]{64}">/', $this->get($path)->body, $path);
         }
         $form = $this->get('/tasks/new')->body;
-        foreach (['title', 'category', 'due_date', 'recurrence_interval', 'recurrence_unit', 'estimated_minutes', 'description'] as $field) {
+        foreach (['title', 'project', 'due_date', 'recurrence_interval', 'recurrence_unit', 'estimated_minutes', 'description'] as $field) {
             self::assertStringContainsString('<label for="f-' . $field . '"', $form);
             self::assertStringContainsString('id="f-' . $field . '"', $form);
         }
@@ -690,7 +689,7 @@ final class PortalTasksTest extends DbTestCase
 
     private function portalWith(\Closure $connect): PortalAdapter
     {
-        return new PortalAdapter(new TaskService(new TaskRepository($connect)), $this->session, ['127.0.0.1']);
+        return new PortalAdapter(\Actions\Tests\Support\Services::tasks($connect), \Actions\Tests\Support\Services::projects($connect), $this->session, ['127.0.0.1']);
     }
 
     public function testUnexpectedPdoErrorGivesGenericPageWithoutDetail(): void
@@ -711,7 +710,7 @@ final class PortalTasksTest extends DbTestCase
         foreach (['SQLSTATE', 'secret_table', 'hunter2', 'PDO', 'Stack trace', '.php'] as $leak) {
             self::assertStringNotContainsString($leak, $r->body);
         }
-        $r = $portal->handle(new Request('POST', '/tasks', ['host' => '127.0.0.1'], '', [], ['_csrf' => $this->session->csrfToken(), 'title' => 'a', 'category' => 'Pro']));
+        $r = $portal->handle(new Request('POST', '/tasks', ['host' => '127.0.0.1'], '', [], ['_csrf' => $this->session->csrfToken(), 'title' => 'a', 'project' => 'Divers Pro']));
         self::assertSame(500, $r->status);
         self::assertStringNotContainsString('SQLSTATE', $r->body);
     }

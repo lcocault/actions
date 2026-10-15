@@ -11,13 +11,13 @@ final class TaskFormTest extends TestCase
 {
     public function testEmptyFieldsBecomeNull(): void
     {
-        $in = TaskForm::toInput(['title' => 'T', 'category' => 'Pro', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => '', 'project' => '', 'conclusions' => '']);
-        self::assertSame(['title' => 'T', 'category' => 'Pro', 'due_date' => null, 'recurrence' => null, 'estimated_minutes' => null, 'description' => null, 'project' => null, 'conclusions' => null], $in);
+        $in = TaskForm::toInput(['title' => 'T', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => '', 'project' => '', 'conclusions' => '']);
+        self::assertSame(['title' => 'T', 'due_date' => null, 'recurrence' => null, 'estimated_minutes' => null, 'description' => null, 'project' => null, 'conclusions' => null], $in);
     }
 
     public function testDigitsBecomeIntegers(): void
     {
-        $in = TaskForm::toInput(['title' => 'T', 'category' => 'Perso', 'due_date' => '2026-02-28', 'recurrence_interval' => '2', 'recurrence_unit' => 'month', 'estimated_minutes' => '90', 'description' => "a\nb"]);
+        $in = TaskForm::toInput(['title' => 'T', 'due_date' => '2026-02-28', 'recurrence_interval' => '2', 'recurrence_unit' => 'month', 'estimated_minutes' => '90', 'description' => "a\nb"]);
         self::assertSame(['interval' => 2, 'unit' => 'month'], $in['recurrence']);
         self::assertSame(90, $in['estimated_minutes']);
         self::assertSame('2026-02-28', $in['due_date']);
@@ -40,16 +40,16 @@ final class TaskFormTest extends TestCase
         self::assertSame(['interval' => null, 'unit' => 'day'], TaskForm::toInput(['recurrence_interval' => '', 'recurrence_unit' => 'day'])['recurrence']);
     }
 
-    public function testOnlyTheEightFieldsAreForwarded(): void
+    public function testOnlyTheSevenFieldsAreForwardedAndForgedCategoryIsIgnored(): void
     {
         $in = TaskForm::toInput(['title' => 'T', 'category' => 'Pro', 'status' => 'done', 'required_actions' => [1], 'id' => '5', '_csrf' => 'x']);
-        self::assertSame(['title', 'category', 'due_date', 'recurrence', 'estimated_minutes', 'description', 'project', 'conclusions'], array_keys($in));
+        self::assertSame(['title', 'due_date', 'recurrence', 'estimated_minutes', 'description', 'project', 'conclusions'], array_keys($in));
     }
 
     public function testNonStringValuesAreForwardedForTheUseCaseToRefuse(): void
     {
         self::assertSame(['x'], TaskForm::toInput(['title' => ['x']])['title']);
-        self::assertSame(['title' => '', 'category' => '', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => '', 'project' => '', 'conclusions' => ''], TaskForm::valuesFromForm(['title' => ['x']]));
+        self::assertSame(['title' => '', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => '', 'project' => '', 'conclusions' => ''], TaskForm::valuesFromForm(['title' => ['x']]));
     }
 
     public function testProjectAndConclusionsAreTransportedAndEmptyBecomesNull(): void
@@ -60,7 +60,7 @@ final class TaskFormTest extends TestCase
         self::assertSame('ms-hr', TaskForm::toInput(['project' => 'ms-hr'])['project'], 'aucune normalisation : le cas d\'usage refuse');
         self::assertNull(TaskForm::toInput(['project' => '', 'conclusions' => ''])['project']);
         self::assertSame(['x'], TaskForm::toInput(['project' => ['x']])['project']);
-        self::assertSame('Erendil', TaskForm::valuesFromTask(['title' => 't', 'category' => 'Pro', 'project' => 'Erendil', 'conclusions' => 'c'])['project']);
-        self::assertSame('', TaskForm::valuesFromTask(['title' => 't', 'category' => 'Pro', 'project' => null, 'conclusions' => null])['conclusions']);
+        self::assertSame('Erendil', TaskForm::valuesFromTask(['title' => 't', 'project' => 'Erendil', 'conclusions' => 'c'])['project']);
+        self::assertSame('', TaskForm::valuesFromTask(['title' => 't', 'project' => 'OPF', 'conclusions' => null])['conclusions']);
     }
 }

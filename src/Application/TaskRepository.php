@@ -8,74 +8,74 @@ namespace Actions\Application;
  * Tout le SQL des tâches et la traduction PDOException -> exception de domaine.
  * Requêtes paramétrées, colonnes toujours nommées (jamais SELECT *).
  */
-final class TaskRepository
+final class TaskRepository extends PdoRepository
 {
-    private const TASK_COLUMNS = "id, title, category, to_char(due_date, 'YYYY-MM-DD') AS due_date,"
-        . ' recurrence_interval, recurrence_unit, estimated_minutes, description, project, conclusions, status,'
-        . " to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at,"
-        . " to_char(completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS completed_at,"
-        . " to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS updated_at";
-
-    private ?\PDO $pdo = null;
-
-    /** @param \Closure():\PDO $connect */
-    public function __construct(private readonly \Closure $connect)
-    {
-    }
+    /** La catégorie et le nom du projet viennent de la jointure `projects p` (la catégorie n'est plus stockée sur la tâche). */
+    private const TASK_COLUMNS = "t.id, t.title, p.category AS category, to_char(t.due_date, 'YYYY-MM-DD') AS due_date,"
+        . ' t.recurrence_interval, t.recurrence_unit, t.estimated_minutes, t.description, p.name AS project, t.conclusions, t.status,'
+        . " to_char(t.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at,"
+        . " to_char(t.completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS completed_at,"
+        . " to_char(t.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS updated_at";
+    private const FROM = ' FROM tasks t JOIN projects p ON p.id = t.project_id';
 
     /**
-     * Transaction explicite en READ COMMITTED (exigé par le trigger anti-cycle).
+     * Insère une tâche validée (forme du validateur) rattachée au projet `$projectId` (déjà résolu) et renvoie son id.
      *
-     * @template T
-     * @param \Closure():T $work
-     * @return T
+     * @param array<string,mixed> $task
+     * @throws InvalidTask project_invalid si le projet a disparu entre sa résolution et l'écriture
      */
-    public function transaction(\Closure $work): mixed
+    public function insert(array $task, int $projectId): int
     {
-        $pdo = $this->pdo();
         try {
-            $pdo->beginTransaction();
-            $pdo->exec('SET TRANSACTION ISOLATION LEVEL READ COMMITTED');
-            $result = $work();
-            $pdo->commit();
-
-            return $result;
-        } catch (\Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            throw $this->unavailableOrSame($e);
+            $stmt = $this->run(
+                'INSERT INTO tasks (title, project_id, due_date, recurrence_interval, recurrence_unit, estimated_minutes, description, conclusions)'
+                . ' VALUES (:title, :project_id, :due_date, :recurrence_interval, :recurrence_unit, :estimated_minutes, :description, :conclusions)'
+                . ' RETURNING id',
+                [
+                    'title' => $task['title'],
+                    'project_id' => $projectId,
+                    'due_date' => $task['due_date'],
+                    'recurrence_interval' => $task['recurrence']['interval'] ?? null,
+                    'recurrence_unit' => $task['recurrence']['unit'] ?? null,
+                    'estimated_minutes' => $task['estimated_minutes'],
+                    'description' => $task['description'],
+                    'conclusions' => $task['conclusions'],
+                ],
+            );
+        } catch (\PDOException $e) {
+            throw $this->projectGone($e) ?? $e;
         }
-    }
-
-    /** Insère une tâche validée (forme du validateur) et renvoie son id. */
-    public function insert(array $task): int
-    {
-        $stmt = $this->run(
-            'INSERT INTO tasks (title, category, due_date, recurrence_interval, recurrence_unit, estimated_minutes, description, project, conclusions)'
-            . ' VALUES (:title, :category, :due_date, :recurrence_interval, :recurrence_unit, :estimated_minutes, :description, :project, :conclusions)'
-            . ' RETURNING id',
-            [
-                'title' => $task['title'],
-                'category' => $task['category'],
-                'due_date' => $task['due_date'],
-                'recurrence_interval' => $task['recurrence']['interval'] ?? null,
-                'recurrence_unit' => $task['recurrence']['unit'] ?? null,
-                'estimated_minutes' => $task['estimated_minutes'],
-                'description' => $task['description'],
-                'project' => $task['project'],
-                'conclusions' => $task['conclusions'],
-            ],
-        );
 
         return (int) $stmt->fetchColumn();
     }
 
     /**
-     * Applique les champs modifiés (clés publiques : title, category, due_date, recurrence,
-     * estimated_minutes, description, project, conclusions) et positionne updated_at.
+     * Crée l'occurrence suivante d'une périodique en un `INSERT ... SELECT` depuis la ligne source (déjà verrouillée) :
+     * titre, projet (donc catégorie), durée, description et périodicité recopiés; conclusions NULL; aucune dépendance;
+     * état par défaut. Renvoie l'id de la nouvelle tâche.
+     */
+    public function copyAsOccurrence(int $sourceId, string $dueDate): int
+    {
+        $stmt = $this->run(
+            'INSERT INTO tasks (title, project_id, due_date, recurrence_interval, recurrence_unit, estimated_minutes, description, conclusions)'
+            . ' SELECT title, project_id, CAST(:due_date AS date), recurrence_interval, recurrence_unit, estimated_minutes, description, NULL'
+            . ' FROM tasks WHERE id = :id RETURNING id',
+            ['due_date' => $dueDate, 'id' => $sourceId],
+        );
+        $id = $stmt->fetchColumn();
+        if ($id === false) {
+            throw new TaskNotFound($sourceId);
+        }
+
+        return (int) $id;
+    }
+
+    /**
+     * Applique les champs modifiés (clés : title, due_date, recurrence, estimated_minutes, description,
+     * project_id, conclusions) et positionne updated_at.
      *
      * @param array<string,mixed> $changes
+     * @throws InvalidTask project_invalid si le projet a disparu entre sa résolution et l'écriture
      */
     public function update(int $id, array $changes): void
     {
@@ -90,13 +90,27 @@ final class TaskRepository
                 continue;
             }
             // Noms de colonnes issus d'une liste fermée (clés déjà validées), jamais de l'entrée.
-            if (!in_array($field, ['title', 'category', 'due_date', 'estimated_minutes', 'description', 'project', 'conclusions'], true)) {
+            if (!in_array($field, ['title', 'due_date', 'estimated_minutes', 'description', 'project_id', 'conclusions'], true)) {
                 throw new \LogicException('Champ non modifiable : ' . $field);
             }
             $sets[] = $field . ' = :' . $field;
             $params[$field] = $value;
         }
-        $this->run('UPDATE tasks SET ' . implode(', ', $sets) . ', updated_at = now() WHERE id = :id', $params);
+        try {
+            $this->run('UPDATE tasks SET ' . implode(', ', $sets) . ', updated_at = now() WHERE id = :id', $params);
+        } catch (\PDOException $e) {
+            throw $this->projectGone($e) ?? $e;
+        }
+    }
+
+    /** 23503 sur tasks_project_id_fkey : le projet a été supprimé entre sa résolution et l'écriture. */
+    private function projectGone(\PDOException $e): ?InvalidTask
+    {
+        if ($this->sqlState($e) === '23503' && str_contains($e->getMessage(), 'tasks_project_id_fkey')) {
+            return new InvalidTask('project_invalid', 'project', 'Projet inconnu.');
+        }
+
+        return null;
     }
 
     /** Positionne updated_at seulement. */
@@ -113,8 +127,9 @@ final class TaskRepository
     /** @return ?array<string,mixed> forme `Task` */
     public function find(int $id, bool $forUpdate = false): ?array
     {
+        // FOR UPDATE OF t : jamais FOR UPDATE seul, qui verrouillerait aussi la ligne projet.
         $stmt = $this->run(
-            'SELECT ' . self::TASK_COLUMNS . ' FROM tasks WHERE id = :id' . ($forUpdate ? ' FOR UPDATE' : ''),
+            'SELECT ' . self::TASK_COLUMNS . self::FROM . ' WHERE t.id = :id' . ($forUpdate ? ' FOR UPDATE OF t' : ''),
             ['id' => $id],
         );
         $row = $stmt->fetch();
@@ -129,7 +144,7 @@ final class TaskRepository
     /**
      * Triées due_date croissante (sans date en dernier), puis id. Clauses fixes, valeurs liées.
      *
-     * @param array{status?:TaskStatus,category?:string,project?:string} $filters déjà validés
+     * @param array{status?:TaskStatus,category?:string,project_id?:int} $filters déjà validés (projet résolu en identifiant)
      * @return list<array<string,mixed>>
      */
     public function findAll(array $filters = []): array
@@ -137,20 +152,20 @@ final class TaskRepository
         $where = [];
         $params = [];
         if (isset($filters['status'])) {
-            $where[] = 'status = :status';
+            $where[] = 't.status = :status';
             $params['status'] = $filters['status']->value;
         }
         if (isset($filters['category'])) {
-            $where[] = 'category = :category';
+            $where[] = 'p.category = :category';
             $params['category'] = $filters['category'];
         }
-        if (isset($filters['project'])) {
-            $where[] = 'project = :project';
-            $params['project'] = $filters['project'];
+        if (isset($filters['project_id'])) {
+            $where[] = 't.project_id = :project_id';
+            $params['project_id'] = $filters['project_id'];
         }
         $rows = $this->run(
-            'SELECT ' . self::TASK_COLUMNS . ' FROM tasks' . ($where === [] ? '' : ' WHERE ' . implode(' AND ', $where))
-            . ' ORDER BY due_date ASC NULLS LAST, id ASC',
+            'SELECT ' . self::TASK_COLUMNS . self::FROM . ($where === [] ? '' : ' WHERE ' . implode(' AND ', $where))
+            . ' ORDER BY t.due_date ASC NULLS LAST, t.id ASC',
             $params,
         )->fetchAll();
         $required = $this->requiredActions(null);
@@ -295,7 +310,7 @@ final class TaskRepository
                 : ['interval' => (int) $r['recurrence_interval'], 'unit' => (string) $r['recurrence_unit']],
             'estimated_minutes' => $r['estimated_minutes'] === null ? null : (int) $r['estimated_minutes'],
             'description' => $r['description'] === null ? null : (string) $r['description'],
-            'project' => $r['project'] === null ? null : (string) $r['project'],
+            'project' => (string) $r['project'],
             'conclusions' => $r['conclusions'] === null ? null : (string) $r['conclusions'],
             'required_actions' => $required,
             'status' => (string) $r['status'],
@@ -303,46 +318,5 @@ final class TaskRepository
             'created_at' => (string) $r['created_at'],
             'updated_at' => (string) $r['updated_at'],
         ];
-    }
-
-    /** @param array<string,mixed> $params */
-    private function run(string $sql, array $params = []): \PDOStatement
-    {
-        try {
-            $stmt = $this->pdo()->prepare($sql);
-            $stmt->execute($params);
-
-            return $stmt;
-        } catch (\PDOException $e) {
-            throw $this->unavailableOrSame($e);
-        }
-    }
-
-    private function pdo(): \PDO
-    {
-        if ($this->pdo === null) {
-            try {
-                $this->pdo = ($this->connect)();
-            } catch (\PDOException $e) {
-                throw new DatabaseUnavailable('Base injoignable.', 0, $e);
-            }
-        }
-
-        return $this->pdo;
-    }
-
-    private function sqlState(\PDOException $e): string
-    {
-        return (string) ($e->errorInfo[0] ?? $e->getCode());
-    }
-
-    /** Connexion perdue (classe 08) -> DatabaseUnavailable; sinon l'exception d'origine (erreur interne). */
-    private function unavailableOrSame(\Throwable $e): \Throwable
-    {
-        if ($e instanceof \PDOException && str_starts_with($this->sqlState($e), '08')) {
-            return new DatabaseUnavailable('Base injoignable.', 0, $e);
-        }
-
-        return $e;
     }
 }

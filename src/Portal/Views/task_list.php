@@ -55,7 +55,7 @@
   <thead>
     <tr>
       <th scope="col">Titre</th>
-      <th scope="col">Catégorie</th>
+      <th scope="col">Catégorie (selon le projet)</th>
       <th scope="col">Projet</th>
       <th scope="col">État</th>
       <th scope="col">Date butée</th>
@@ -67,7 +67,7 @@
     <tr>
       <td><a href="<?= $url('/tasks/' . $task['id']) ?>"><?= $e($task['title']) ?></a></td>
       <td><?= $e($task['category']) ?></td>
-      <td><?= $e($task['project'] ?? '') ?></td>
+      <td><?= $e($task['project']) ?></td>
       <td><span class="status status-<?= $e($task['status']) ?>"><?= $e(\Actions\Portal\Labels::status($task['status'])) ?></span></td>
       <td><?= $e(\Actions\Portal\Labels::date($task['due_date'])) ?></td>
       <td><?= $e(\Actions\Portal\Labels::recurrence($task['recurrence'])) ?></td>

@@ -6,11 +6,11 @@ namespace Actions\Portal;
 
 use Actions\Application\DomainError;
 use Actions\Application\InvalidTask;
+use Actions\Application\ProjectService;
 use Actions\Application\TaskIsRequired;
 use Actions\Application\TaskNotFound;
 use Actions\Application\TaskService;
 use Actions\Application\TaskStatus;
-use Actions\Application\TaskValidator;
 use Actions\Http\DomainStatus;
 use Actions\Http\PathId;
 use Actions\Http\Request;
@@ -26,7 +26,6 @@ final class TaskPages
     /** Champ de la validation -> champ du formulaire. */
     private const FORM_FIELD = [
         'title' => 'title',
-        'category' => 'category',
         'due_date' => 'due_date',
         'estimated_minutes' => 'estimated_minutes',
         'description' => 'description',
@@ -39,7 +38,6 @@ final class TaskPages
     /** Champ du formulaire -> identifiant du contrôle à atteindre depuis le résumé d'erreurs. */
     private const ANCHOR = [
         'title' => 'f-title',
-        'category' => 'f-category',
         'due_date' => 'f-due_date',
         'estimated_minutes' => 'f-estimated_minutes',
         'description' => 'f-description',
@@ -50,6 +48,7 @@ final class TaskPages
 
     public function __construct(
         private readonly TaskService $tasks,
+        private readonly ProjectService $projects,
         private readonly Renderer $renderer,
     ) {
     }
@@ -80,7 +79,7 @@ final class TaskPages
             'filters' => $filters,
             'statuses' => Labels::statuses(),
             'isFiltered' => $filters['status'] !== '' || $filters['category'] !== '' || $filters['project'] !== '' || $filters['hide_done'],
-            'projects' => TaskValidator::PROJECTS,
+            'projects' => $this->projects->names(),
         ]);
     }
 
@@ -317,7 +316,7 @@ final class TaskPages
             'summary' => $summary,
             'errors' => $errors,
             'units' => Labels::formUnits(),
-            'projects' => TaskValidator::PROJECTS,
+            'projects' => $this->projects->names(),
             'csrf' => $this->renderer->csrf(),
         ]);
     }

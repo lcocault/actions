@@ -10,10 +10,11 @@ namespace Actions\Portal;
  */
 final class TaskForm
 {
-    public const FIELDS = ['title', 'category', 'due_date', 'recurrence_interval', 'recurrence_unit', 'estimated_minutes', 'description', 'project', 'conclusions'];
+    public const FIELDS = ['title', 'due_date', 'recurrence_interval', 'recurrence_unit', 'estimated_minutes', 'description', 'project', 'conclusions'];
 
     /**
-     * Les huit champs de TaskService, toujours tous présents (un champ vidé efface la valeur).
+     * Les sept champs de TaskService, toujours tous présents (un champ vidé efface la valeur). Un champ `category`
+     * forgé dans le POST est ignoré comme tout champ de formulaire inconnu (la catégorie découle du projet).
      *
      * @param array<string,mixed> $form
      * @return array<string,mixed>
@@ -25,7 +26,6 @@ final class TaskForm
 
         return [
             'title' => $form['title'] ?? '',
-            'category' => $form['category'] ?? '',
             'due_date' => self::nullIfEmpty($form['due_date'] ?? null),
             'recurrence' => $interval === null && $unit === null ? null : ['interval' => $interval, 'unit' => $unit],
             'estimated_minutes' => self::number($form['estimated_minutes'] ?? null),
@@ -59,7 +59,6 @@ final class TaskForm
     {
         return [
             'title' => $task['title'],
-            'category' => $task['category'],
             'due_date' => $task['due_date'] ?? '',
             'recurrence_interval' => isset($task['recurrence']) ? (string) $task['recurrence']['interval'] : '',
             'recurrence_unit' => $task['recurrence']['unit'] ?? '',

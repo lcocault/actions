@@ -12,9 +12,10 @@ use PHPUnit\Framework\TestCase;
 /** Une assertion de `code` par règle de validation (sans base). */
 final class TaskValidatorTest extends TestCase
 {
+    /** Un projet est obligatoire : `OPF` par défaut (la forme seule est contrôlée ici, sans base). */
     private function create(array $data): array
     {
-        return (new TaskValidator())->validateCreate($data);
+        return (new TaskValidator())->validateCreate($data + ['project' => 'OPF']);
     }
 
     private function assertRefused(string $code, callable $fn, ?string $field = null): void
@@ -35,15 +36,15 @@ final class TaskValidatorTest extends TestCase
     public function testMinimalTaskGivesNullOptionalFields(): void
     {
         self::assertSame([
-            'title' => 'Payer', 'category' => 'Pro', 'due_date' => null,
+            'title' => 'Payer', 'due_date' => null,
             'recurrence' => null, 'estimated_minutes' => null, 'description' => null,
-            'project' => null, 'conclusions' => null,
-        ], $this->create(['title' => 'Payer', 'category' => 'Pro']));
+            'project' => 'OPF', 'conclusions' => null,
+        ], $this->create(['title' => 'Payer']));
     }
 
     public function testTitleIsKeptAsIs(): void
     {
-        self::assertSame('  a b ', $this->create(['title' => '  a b ', 'category' => 'Perso'])['title']);
+        self::assertSame('  a b ', $this->create(['title' => '  a b '])['title']);
     }
 
     /** @return array<string,array{mixed}> */
@@ -58,55 +59,52 @@ final class TaskValidatorTest extends TestCase
     #[DataProvider('blankTitles')]
     public function testBlankTitleRefused(string $title): void
     {
-        $this->assertRefused('title_blank', fn () => $this->create(['title' => $title, 'category' => 'Pro']), 'title');
+        $this->assertRefused('title_blank', fn () => $this->create(['title' => $title]), 'title');
     }
 
     public function testMissingTitleRefused(): void
     {
-        $this->assertRefused('title_blank', fn () => $this->create(['category' => 'Pro']));
+        $this->assertRefused('title_blank', fn () => $this->create([]));
     }
 
     public function testTitleLength(): void
     {
-        self::assertSame(255, mb_strlen($this->create(['title' => str_repeat('é', 255), 'category' => 'Pro'])['title']));
-        $this->assertRefused('title_too_long', fn () => $this->create(['title' => str_repeat('é', 256), 'category' => 'Pro']));
+        self::assertSame(255, mb_strlen($this->create(['title' => str_repeat('é', 255)])['title']));
+        $this->assertRefused('title_too_long', fn () => $this->create(['title' => str_repeat('é', 256)]));
     }
 
     public function testInvalidUtf8AndNulRefused(): void
     {
-        $this->assertRefused('text_invalid', fn () => $this->create(['title' => "a\xC3\x28", 'category' => 'Pro']));
-        $this->assertRefused('text_invalid', fn () => $this->create(['title' => "a\0b", 'category' => 'Pro']));
-        $this->assertRefused('text_invalid', fn () => $this->create(['title' => 'a', 'category' => 'Pro', 'description' => "x\0"]), 'description');
+        $this->assertRefused('text_invalid', fn () => $this->create(['title' => "a\xC3\x28"]));
+        $this->assertRefused('text_invalid', fn () => $this->create(['title' => "a\0b"]));
+        $this->assertRefused('text_invalid', fn () => $this->create(['title' => 'a', 'description' => "x\0"]), 'description');
     }
 
-    #[DataProvider('badCategories')]
-    public function testCategoryRefused(mixed $category): void
+    /** La catégorie n'est plus un champ de tâche : elle découle du projet. */
+    public function testCategoryIsNoLongerAFieldOfATask(): void
     {
-        $this->assertRefused('category_invalid', fn () => $this->create(['title' => 'a', 'category' => $category]), 'category');
+        foreach (['Pro', 'Perso', 'Autre', '', 1, null] as $value) {
+            $this->assertRefused('field_unknown', fn () => $this->create(['title' => 'a', 'category' => $value]), 'category');
+            $this->assertRefused('field_unknown', fn () => (new TaskValidator())->validateUpdate($this->current(), ['category' => $value]), 'category');
+        }
     }
 
-    /** @return array<string,array{mixed}> */
-    public static function badCategories(): array
+    public function testMissingProjectRefused(): void
     {
-        return ['inconnue' => ['Autre'], 'casse' => ['pro'], 'vide' => [''], 'espace' => ['Pro ']];
-    }
-
-    public function testMissingCategoryRefused(): void
-    {
-        $this->assertRefused('category_invalid', fn () => $this->create(['title' => 'a']));
+        $this->assertRefused('project_invalid', fn () => (new TaskValidator())->validateCreate(['title' => 'a']), 'project');
     }
 
     public function testDueDate(): void
     {
-        self::assertSame('2020-01-31', $this->create(['title' => 'a', 'category' => 'Pro', 'due_date' => '2020-01-31'])['due_date']);
-        self::assertSame('2024-02-29', $this->create(['title' => 'a', 'category' => 'Pro', 'due_date' => '2024-02-29'])['due_date']);
-        self::assertSame('0001-01-01', $this->create(['title' => 'a', 'category' => 'Pro', 'due_date' => '0001-01-01'])['due_date']);
+        self::assertSame('2020-01-31', $this->create(['title' => 'a', 'due_date' => '2020-01-31'])['due_date']);
+        self::assertSame('2024-02-29', $this->create(['title' => 'a', 'due_date' => '2024-02-29'])['due_date']);
+        self::assertSame('0001-01-01', $this->create(['title' => 'a', 'due_date' => '0001-01-01'])['due_date']);
     }
 
     #[DataProvider('badDates')]
     public function testDueDateRefused(string $date): void
     {
-        $this->assertRefused('due_date_invalid', fn () => $this->create(['title' => 'a', 'category' => 'Pro', 'due_date' => $date]), 'due_date');
+        $this->assertRefused('due_date_invalid', fn () => $this->create(['title' => 'a', 'due_date' => $date]), 'due_date');
     }
 
     /** @return array<string,array{string}> */
@@ -121,7 +119,7 @@ final class TaskValidatorTest extends TestCase
 
     public function testRecurrenceValid(): void
     {
-        $t = $this->create(['title' => 'a', 'category' => 'Pro', 'due_date' => '2026-10-11', 'recurrence' => ['interval' => 2, 'unit' => 'week']]);
+        $t = $this->create(['title' => 'a', 'due_date' => '2026-10-11', 'recurrence' => ['interval' => 2, 'unit' => 'week']]);
         self::assertSame(['interval' => 2, 'unit' => 'week'], $t['recurrence']);
     }
 
@@ -148,28 +146,28 @@ final class TaskValidatorTest extends TestCase
     public function testRecurrenceRefused(string $code, array $recurrence, string $field): void
     {
         $this->assertRefused($code, fn () => $this->create([
-            'title' => 'a', 'category' => 'Pro', 'due_date' => '2026-10-11', 'recurrence' => $recurrence,
+            'title' => 'a', 'due_date' => '2026-10-11', 'recurrence' => $recurrence,
         ]), $field);
     }
 
     public function testRecurrenceNotAnObject(): void
     {
         $this->assertRefused('field_type_invalid', fn () => $this->create([
-            'title' => 'a', 'category' => 'Pro', 'due_date' => '2026-10-11', 'recurrence' => 'weekly',
+            'title' => 'a', 'due_date' => '2026-10-11', 'recurrence' => 'weekly',
         ]), 'recurrence');
     }
 
     public function testRecurrenceWithoutDueDateRefused(): void
     {
         $this->assertRefused('recurrence_requires_due_date', fn () => $this->create([
-            'title' => 'a', 'category' => 'Pro', 'recurrence' => ['interval' => 1, 'unit' => 'day'],
+            'title' => 'a', 'recurrence' => ['interval' => 1, 'unit' => 'day'],
         ]), 'recurrence');
     }
 
     public function testEstimatedMinutes(): void
     {
-        self::assertSame(1, $this->create(['title' => 'a', 'category' => 'Pro', 'estimated_minutes' => 1])['estimated_minutes']);
-        self::assertSame(2147483647, $this->create(['title' => 'a', 'category' => 'Pro', 'estimated_minutes' => 2147483647])['estimated_minutes']);
+        self::assertSame(1, $this->create(['title' => 'a', 'estimated_minutes' => 1])['estimated_minutes']);
+        self::assertSame(2147483647, $this->create(['title' => 'a', 'estimated_minutes' => 2147483647])['estimated_minutes']);
     }
 
     /** @return array<string,array{string,mixed}> */
@@ -185,43 +183,43 @@ final class TaskValidatorTest extends TestCase
     #[DataProvider('badMinutes')]
     public function testEstimatedMinutesRefused(string $code, mixed $value): void
     {
-        $this->assertRefused($code, fn () => $this->create(['title' => 'a', 'category' => 'Pro', 'estimated_minutes' => $value]), 'estimated_minutes');
+        $this->assertRefused($code, fn () => $this->create(['title' => 'a', 'estimated_minutes' => $value]), 'estimated_minutes');
     }
 
     public function testWrongTypes(): void
     {
-        $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => 12, 'category' => 'Pro']), 'title');
-        $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => null, 'category' => 'Pro']), 'title');
-        $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => 'a', 'category' => 1]), 'category');
-        $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => 'a', 'category' => 'Pro', 'due_date' => 20261011]), 'due_date');
-        $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => 'a', 'category' => 'Pro', 'description' => []]), 'description');
+        $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => 12]), 'title');
+        $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => null]), 'title');
+        $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => 'a', 'due_date' => 20261011]), 'due_date');
+        $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => 'a', 'description' => []]), 'description');
     }
 
     public function testEmptyDescriptionIsKept(): void
     {
-        self::assertSame('', $this->create(['title' => 'a', 'category' => 'Pro', 'description' => ''])['description']);
+        self::assertSame('', $this->create(['title' => 'a', 'description' => ''])['description']);
     }
 
     public function testUnknownKeyRefused(): void
     {
-        $this->assertRefused('field_unknown', fn () => $this->create(['title' => 'a', 'category' => 'Pro', 'titel' => 'x']), 'titel');
+        $this->assertRefused('field_unknown', fn () => $this->create(['title' => 'a', 'titel' => 'x']), 'titel');
         foreach (['id', 'required_actions', 'created_at', 'updated_at'] as $key) {
-            $this->assertRefused('field_unknown', fn () => $this->create(['title' => 'a', 'category' => 'Pro', $key => 1]), $key);
+            $this->assertRefused('field_unknown', fn () => $this->create(['title' => 'a', $key => 1]), $key);
         }
     }
 
     public function testFailFastReportsFirstError(): void
     {
-        // titre invalide ET catégorie invalide : l'ordre des champs fait foi (titre d'abord).
-        $this->assertRefused('title_blank', fn () => $this->create(['title' => ' ', 'category' => 'X']));
-        // clé inconnue avant le reste.
-        $this->assertRefused('field_unknown', fn () => $this->create(['title' => ' ', 'category' => 'X', 'zzz' => 1]));
+        // titre invalide ET projet de type invalide : l'ordre des champs fait foi (titre d'abord).
+        $this->assertRefused('title_blank', fn () => $this->create(['title' => ' ', 'project' => 3]));
+        // clé inconnue (dont `category`) avant le reste.
+        $this->assertRefused('field_unknown', fn () => $this->create(['title' => ' ', 'zzz' => 1]));
+        $this->assertRefused('field_unknown', fn () => $this->create(['title' => ' ', 'category' => 'Pro']));
     }
 
     private function current(): array
     {
         return [
-            'title' => 'a', 'category' => 'Pro', 'due_date' => '2026-10-11',
+            'title' => 'a', 'due_date' => '2026-10-11',
             'recurrence' => ['interval' => 1, 'unit' => 'day'], 'estimated_minutes' => 5, 'description' => 'd',
             'project' => 'OPF', 'conclusions' => 'c',
         ];
@@ -258,65 +256,56 @@ final class TaskValidatorTest extends TestCase
         $this->assertRefused('field_unknown', fn () => (new TaskValidator())->validateUpdate($this->current(), ['required_actions' => []]), 'required_actions');
     }
 
-    public function testEveryProjectOfTheClosedListIsAcceptedAndNullClears(): void
+    public function testProjectIsAnyStringKeptAsIsAndNullIsRefused(): void
     {
         $v = new TaskValidator();
-        self::assertSame(['MS-HR', 'Jardin/Maison', 'OPF', 'Erendil'], TaskValidator::PROJECTS);
-        foreach (TaskValidator::PROJECTS as $project) {
-            self::assertSame($project, $this->create(['title' => 't', 'category' => 'Pro', 'project' => $project])['project']);
+        // La forme seule est contrôlée ici : l'existence du projet l'est par TaskService (base).
+        foreach (['OPF', 'opf', 'MS-HR', 'Jardin/Maison', ' OPF', "OPF\n", 'Projet créé plus tard', ''] as $name) {
+            self::assertSame($name, $this->create(['title' => 't', 'project' => $name])['project']);
+            self::assertSame($name, $v->validateUpdate($this->current(), ['project' => $name])['project']);
         }
-        self::assertNull($this->create(['title' => 't', 'category' => 'Pro', 'project' => null])['project']);
-        self::assertNull($v->validateUpdate($this->current(), ['project' => null])['project']);
-        self::assertSame('MS-HR', $v->validateUpdate($this->current(), ['project' => 'MS-HR'])['project']);
         self::assertSame('OPF', $v->validateUpdate($this->current(), ['title' => 'x'])['project'], 'clé absente : inchangé');
     }
 
-    public function testProjectOutsideTheListIsRefusedWithoutNormalisation(): void
+    public function testNullProjectIsRefusedOnCreateAndUpdate(): void
     {
-        foreach (['', 'ms-hr', 'MSHR', 'jardin/maison', 'JARDIN/MAISON', 'Autre', 'MS-HR ', ' OPF', "OPF\n"] as $value) {
-            $this->assertRefused('project_invalid', fn () => $this->create(['title' => 't', 'category' => 'Pro', 'project' => $value]), 'project');
-            $this->assertRefused('project_invalid', fn () => (new TaskValidator())->validateUpdate($this->current(), ['project' => $value]), 'project');
-        }
-        try {
-            $this->create(['title' => 't', 'category' => 'Pro', 'project' => 'x']);
-        } catch (InvalidTask $e) {
-            self::assertSame('Le projet doit être MS-HR, Jardin/Maison, OPF ou Erendil.', $e->getMessage());
-        }
+        $this->assertRefused('project_invalid', fn () => $this->create(['title' => 't', 'project' => null]), 'project');
+        $this->assertRefused('project_invalid', fn () => (new TaskValidator())->validateUpdate($this->current(), ['project' => null]), 'project');
     }
 
     public function testProjectOfWrongTypeIsRefused(): void
     {
         foreach ([1, true, ['OPF'], 1.5] as $value) {
-            $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => 't', 'category' => 'Pro', 'project' => $value]), 'project');
+            $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => 't', 'project' => $value]), 'project');
+            $this->assertRefused('field_type_invalid', fn () => (new TaskValidator())->validateUpdate($this->current(), ['project' => $value]), 'project');
         }
     }
 
     public function testConclusionsFollowTheRulesOfDescription(): void
     {
         $v = new TaskValidator();
-        self::assertNull($this->create(['title' => 't', 'category' => 'Pro', 'conclusions' => null])['conclusions']);
-        self::assertSame('', $this->create(['title' => 't', 'category' => 'Pro', 'conclusions' => ''])['conclusions']);
+        self::assertNull($this->create(['title' => 't', 'conclusions' => null])['conclusions']);
+        self::assertSame('', $this->create(['title' => 't', 'conclusions' => ''])['conclusions']);
         $long = str_repeat("é\n", 20000);
-        self::assertSame($long, $this->create(['title' => 't', 'category' => 'Pro', 'conclusions' => $long])['conclusions']);
+        self::assertSame($long, $this->create(['title' => 't', 'conclusions' => $long])['conclusions']);
         self::assertNull($v->validateUpdate($this->current(), ['conclusions' => null])['conclusions']);
         self::assertSame('c', $v->validateUpdate($this->current(), ['title' => 'x'])['conclusions']);
-        $this->assertRefused('text_invalid', fn () => $this->create(['title' => 't', 'category' => 'Pro', 'conclusions' => "a\0b"]), 'conclusions');
-        $this->assertRefused('text_invalid', fn () => $this->create(['title' => 't', 'category' => 'Pro', 'conclusions' => "\xff"]), 'conclusions');
-        $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => 't', 'category' => 'Pro', 'conclusions' => 5]), 'conclusions');
-        $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => 't', 'category' => 'Pro', 'conclusions' => ['a']]), 'conclusions');
+        $this->assertRefused('text_invalid', fn () => $this->create(['title' => 't', 'conclusions' => "a\0b"]), 'conclusions');
+        $this->assertRefused('text_invalid', fn () => $this->create(['title' => 't', 'conclusions' => "\xff"]), 'conclusions');
+        $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => 't', 'conclusions' => 5]), 'conclusions');
+        $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => 't', 'conclusions' => ['a']]), 'conclusions');
     }
 
-    public function testProjectFilter(): void
+    public function testProjectFilterChecksTheShapeOnly(): void
     {
         $v = new TaskValidator();
         self::assertSame(['project' => 'Jardin/Maison'], $v->validateFilters(['project' => 'Jardin/Maison']));
         self::assertSame(['category' => 'Pro', 'project' => 'OPF'], $v->validateFilters(['category' => 'Pro', 'project' => 'OPF']));
-        foreach (['', 'opf', 'Autre'] as $value) {
-            $this->assertRefused('project_invalid', fn () => $v->validateFilters(['project' => $value]), 'project');
-        }
+        self::assertSame(['project' => ''], $v->validateFilters(['project' => '']), 'valeur vide : refusée plus loin, par TaskService');
         foreach ([null, 3, ['OPF']] as $value) {
             $this->assertRefused('field_type_invalid', fn () => $v->validateFilters(['project' => $value]), 'project');
         }
+        $this->assertRefused('category_invalid', fn () => $v->validateFilters(['category' => 'Autre']), 'category');
         $this->assertRefused('field_unknown', fn () => $v->validateFilters(['conclusions' => 'x']), 'conclusions');
     }
 }

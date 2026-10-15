@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Actions\Http;
 
 use Actions\Application\DomainError;
+use Actions\Application\InvalidProject;
 use Actions\Application\InvalidTask;
 
 /** Table unique code d'erreur de domaine -> statut HTTP, partagée par REST et portail. */
@@ -20,11 +21,14 @@ final class DomainStatus
         'status_transition_invalid' => 409,
         'required_actions_not_done' => 409,
         'next_due_date_out_of_range' => 409,
+        'project_not_found' => 404,
+        'project_name_taken' => 409,
+        'project_in_use' => 409,
     ];
 
-    /** Les codes de validation forment une famille ouverte : statut par classe (422), puis par table; null = inconnu. */
+    /** Les codes de validation forment une famille ouverte : statut par classe (422, tâches et projets), puis par table; null = inconnu. */
     public static function of(DomainError $e): ?int
     {
-        return $e instanceof InvalidTask ? 422 : (self::BY_CODE[$e->code()] ?? null);
+        return $e instanceof InvalidTask || $e instanceof InvalidProject ? 422 : (self::BY_CODE[$e->code()] ?? null);
     }
 }

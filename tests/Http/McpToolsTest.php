@@ -54,7 +54,7 @@ final class McpToolsTest extends HttpTestCase
     {
         $expected = [
             'ping' => [],
-            'create_task' => ['title', 'category'],
+            'create_task' => ['title', 'project'],
             'get_task' => ['id'],
             'list_tasks' => [],
             'update_task' => ['id'],
@@ -86,7 +86,7 @@ final class McpToolsTest extends HttpTestCase
         self::assertSame(TaskValidator::CATEGORIES, $tools['list_tasks']['inputSchema']['properties']['category']['enum']);
         foreach (['create_task', 'update_task'] as $name) {
             $props = $tools[$name]['inputSchema']['properties'];
-            self::assertSame(TaskValidator::CATEGORIES, $props['category']['enum'], $name);
+            self::assertArrayNotHasKey('category', $props, "$name : la catégorie découle du projet");
             self::assertSame(TaskValidator::UNITS, $props['recurrence']['properties']['unit']['enum'], $name);
             self::assertSame(['interval', 'unit'], $props['recurrence']['required'], $name);
             self::assertFalse($props['recurrence']['additionalProperties'], $name);
@@ -102,15 +102,16 @@ final class McpToolsTest extends HttpTestCase
         $tools = $this->tools();
         foreach (['create_task', 'update_task'] as $name) {
             $props = $tools[$name]['inputSchema']['properties'];
-            self::assertSame(['string', 'null'], $props['project']['type'], $name);
-            self::assertSame([...TaskValidator::PROJECTS, null], $props['project']['enum'], $name);
+            self::assertSame('string', $props['project']['type'], "$name : le projet ne peut pas être effacé (pas null)");
+            self::assertArrayNotHasKey('enum', $props['project'], "$name : base injoignable, schéma servi sans enum (H6)");
             self::assertSame(['string', 'null'], $props['conclusions']['type'], $name);
-            self::assertNotContains('project', $tools[$name]['inputSchema']['required'], $name);
             self::assertNotContains('conclusions', $tools[$name]['inputSchema']['required'], $name);
         }
+        self::assertContains('project', $tools['create_task']['inputSchema']['required']);
+        self::assertNotContains('project', $tools['update_task']['inputSchema']['required']);
         $filter = $tools['list_tasks']['inputSchema']['properties']['project'];
         self::assertSame('string', $filter['type']);
-        self::assertSame(TaskValidator::PROJECTS, $filter['enum'], 'sans null : un filtre n\'a pas de valeur « aucun »');
+        self::assertArrayNotHasKey('enum', $filter);
         self::assertSame(['id', 'status'], array_keys($tools['change_task_status']['inputSchema']['properties']));
         self::assertStringContainsString('projet', $tools['list_tasks']['description']);
     }
@@ -235,7 +236,7 @@ final class McpToolsTest extends HttpTestCase
 
     public function testUnreachableDatabaseGivesServiceUnavailableToolError(): void
     {
-        foreach (['get_task' => '{"id":1}', 'list_tasks' => null, 'create_task' => '{"title":"T","category":"Pro"}', 'delete_task' => '{"id":1,"confirm":true}'] as $name => $args) {
+        foreach (['get_task' => '{"id":1}', 'list_tasks' => null, 'create_task' => '{"title":"T","project":"Divers Pro"}', 'delete_task' => '{"id":1,"confirm":true}'] as $name => $args) {
             [$e, $text] = $this->toolError($this->rawCall($name, $args));
             self::assertSame(['code' => 'service_unavailable', 'message' => 'Service indisponible.'], $e, $name);
             foreach (['127.0.0.1', 'secret_db', 'secret_user', 'secret_pwd', 'SQLSTATE'] as $leak) {
@@ -251,9 +252,11 @@ final class McpToolsTest extends HttpTestCase
         $e->errorInfo = ['XX000', 7, 'SECRET_DRIVER_MESSAGE'];
         $pdo->method('prepare')->willThrowException($e);
         $pdo->method('beginTransaction')->willThrowException($e);
-        $service = new \Actions\Application\TaskService(new \Actions\Application\TaskRepository(static fn (): \PDO => $pdo));
-        $adapter = new McpAdapter(new \Actions\Application\Diagnostic(static fn (): \PDO => $pdo), $service, [], ['127.0.0.1']);
-        foreach (['get_task' => '{"id":1}', 'list_tasks' => '{}', 'create_task' => '{"title":"T","category":"Pro"}', 'update_task' => '{"id":1,"title":"x"}'] as $name => $args) {
+        $connect = static fn (): \PDO => $pdo;
+        $projects = new \Actions\Application\ProjectRepository($connect);
+        $service = new \Actions\Application\TaskService(new \Actions\Application\TaskRepository($connect), $projects);
+        $adapter = new McpAdapter(new \Actions\Application\Diagnostic($connect), $service, new \Actions\Application\ProjectService($projects), [], ['127.0.0.1']);
+        foreach (['get_task' => '{"id":1}', 'list_tasks' => '{}', 'create_task' => '{"title":"T","project":"Divers Pro"}', 'update_task' => '{"id":1,"title":"x"}'] as $name => $args) {
             $body = '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"' . $name . '","arguments":' . $args . '}}';
             $r = $adapter->handle(new \Actions\Http\Request('POST', '/mcp', ['host' => '127.0.0.1:8080', 'content-type' => 'application/json'], $body));
             $d = $this->decode($r);

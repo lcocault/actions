@@ -27,15 +27,13 @@ final class TaskStatusServiceTest extends DbTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->pdo->exec('DROP TABLE IF EXISTS task_dependencies, tasks, schema_migrations CASCADE');
-        $this->pdo->exec('DROP FUNCTION IF EXISTS task_dependencies_check_cycle()');
-        (new Migrator($this->pdo, __DIR__ . '/../../database/migrations'))->migrate();
+        $this->migrateFresh();
         $this->svc = Bootstrap::taskService($this->config);
     }
 
     private function make(string $title = 't', array $extra = []): int
     {
-        return $this->svc->create($extra + ['title' => $title, 'category' => 'Pro'])['id'];
+        return $this->svc->create($extra + ['title' => $title, 'project' => 'Divers Pro'])['id'];
     }
 
     /** Place une tâche dans un état donné par SQL direct (sans passer par le service). */
@@ -84,7 +82,7 @@ final class TaskStatusServiceTest extends DbTestCase
 
     public function testCreatedTaskIsTodoWithoutCompletion(): void
     {
-        $task = $this->svc->create(['title' => 'x', 'category' => 'Pro']);
+        $task = $this->svc->create(['title' => 'x', 'project' => 'Divers Pro']);
         self::assertSame('todo', $task['status']);
         self::assertNull($task['completed_at']);
     }
@@ -92,7 +90,7 @@ final class TaskStatusServiceTest extends DbTestCase
     public function testCreateRejectsStatusAndCompletedAt(): void
     {
         foreach (['status', 'completed_at'] as $key) {
-            $this->refused(InvalidTask::class, 'field_unknown', fn () => $this->svc->create(['title' => 'x', 'category' => 'Pro', $key => 'done']));
+            $this->refused(InvalidTask::class, 'field_unknown', fn () => $this->svc->create(['title' => 'x', 'project' => 'Divers Pro', $key => 'done']));
         }
         self::assertSame(0, $this->taskCount());
     }
@@ -262,7 +260,7 @@ final class TaskStatusServiceTest extends DbTestCase
     public function testDoneOnRecurringTaskKeepsItAndCreatesNextOccurrence(): void
     {
         $id = $this->make('Loyer', [
-            'category' => 'Perso', 'due_date' => '2026-01-31', 'recurrence' => ['interval' => 1, 'unit' => 'month'],
+            'project' => 'Divers Perso', 'due_date' => '2026-01-31', 'recurrence' => ['interval' => 1, 'unit' => 'month'],
             'estimated_minutes' => 15, 'description' => 'virement',
         ]);
         $req = $this->make('req');
@@ -280,8 +278,9 @@ final class TaskStatusServiceTest extends DbTestCase
         self::assertNotSame($id, $next['id']);
         self::assertSame(
             ['title' => 'Loyer', 'category' => 'Perso', 'due_date' => '2026-02-28', 'recurrence' => ['interval' => 1, 'unit' => 'month'],
-                'estimated_minutes' => 15, 'description' => 'virement', 'required_actions' => [], 'status' => 'todo', 'completed_at' => null],
-            array_intersect_key($next, array_flip(['title', 'category', 'due_date', 'recurrence', 'estimated_minutes', 'description', 'required_actions', 'status', 'completed_at'])),
+                'estimated_minutes' => 15, 'description' => 'virement', 'project' => 'Divers Perso', 'conclusions' => null,
+                'required_actions' => [], 'status' => 'todo', 'completed_at' => null],
+            array_intersect_key($next, array_flip(['title', 'category', 'due_date', 'recurrence', 'estimated_minutes', 'description', 'project', 'conclusions', 'required_actions', 'status', 'completed_at'])),
         );
         self::assertSame(3, $this->taskCount());
         self::assertSame(1, $this->links(), 'aucun lien copié : le lien reste sur l\'ancienne occurrence');
@@ -400,9 +399,9 @@ final class TaskStatusServiceTest extends DbTestCase
     public function testListFiltersByStatusAndCategory(): void
     {
         $a = $this->make('a', ['due_date' => '2026-03-01']);
-        $b = $this->svc->create(['title' => 'b', 'category' => 'Perso', 'due_date' => '2026-01-01'])['id'];
+        $b = $this->svc->create(['title' => 'b', 'project' => 'Divers Perso', 'due_date' => '2026-01-01'])['id'];
         $c = $this->make('c');
-        $d = $this->svc->create(['title' => 'd', 'category' => 'Perso'])['id'];
+        $d = $this->svc->create(['title' => 'd', 'project' => 'Divers Perso'])['id'];
         $this->force($b, 'in_progress');
         $this->force($c, 'done');
         $this->force($d, 'done');
@@ -472,7 +471,7 @@ final class TaskStatusServiceTest extends DbTestCase
         $pdo = Database::connect($this->config);
         $pdo->exec("SET lock_timeout = '500ms'");
 
-        return new TaskService(new TaskRepository(static fn (): \PDO => $pdo));
+        return \Actions\Tests\Support\Services::tasks(static fn (): \PDO => $pdo);
     }
 
     public function testConcurrentTerminationWaitsForRowLockThenIsRefused(): void
@@ -486,7 +485,7 @@ final class TaskStatusServiceTest extends DbTestCase
         $c1->beginTransaction();
         $c1->exec("SELECT 1 FROM tasks WHERE id = $id FOR UPDATE");
         $c1->exec("UPDATE tasks SET status = 'done', completed_at = now() WHERE id = $id");
-        $c1->exec("INSERT INTO tasks (title, category, due_date, recurrence_interval, recurrence_unit) VALUES ('x', 'Pro', '2026-01-02', 1, 'day')");
+        $c1->exec('INSERT INTO tasks (title, project_id, due_date, recurrence_interval, recurrence_unit) VALUES (\'x\', ' . $this->projectId('Divers Pro') . ", '2026-01-02', 1, 'day')");
 
         try {
             $svc2->changeStatus($id, 'done');

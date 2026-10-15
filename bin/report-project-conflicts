@@ -1,0 +1,48 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// Temps 1 de la migration 0004 : rapport en lecture seule des conflits catégorie/projet.
+// Code de sortie : 0 aucun conflit, 1 conflits ou erreur, 2 usage.
+
+require dirname(__DIR__) . '/vendor/autoload.php';
+
+use Actions\Infrastructure\Config;
+use Actions\Infrastructure\Database;
+use Actions\Infrastructure\ProjectConflictReport;
+
+$allowEnv = null;
+foreach (array_slice($argv, 1) as $arg) {
+    if (str_starts_with($arg, '--allow-env=')) {
+        $allowEnv = substr($arg, strlen('--allow-env='));
+    } else {
+        fwrite(STDERR, "Usage : php bin/report-project-conflicts [--allow-env=<APP_ENV>]\n");
+        exit(2);
+    }
+}
+
+try {
+    $config = Config::load();
+    if (!in_array($config->appEnv, ['local', 'test'], true) && $allowEnv !== $config->appEnv) {
+        fwrite(STDERR, "Refus : APP_ENV={$config->appEnv}. Autorisé seulement en local/test (sauf --allow-env explicite et autorisation de l'utilisateur).\n");
+        exit(1);
+    }
+    $report = (new ProjectConflictReport(Database::connect($config)))->build();
+} catch (Throwable $e) {
+    fwrite(STDERR, 'Erreur : ' . ($e instanceof PDOException ? 'accès à la base impossible (' . $e->getMessage() . ')' : $e->getMessage()) . "\n");
+    exit(1);
+}
+
+$n = count($report['conflicts']);
+echo "Tâches sans projet rattachées à l'accueil de leur catégorie (sans conflit) : Divers Pro = {$report['without_project']['Pro']}, Divers Perso = {$report['without_project']['Perso']}\n";
+if ($n === 0) {
+    echo "Aucun conflit : la migration 0004 peut être appliquée.\n";
+    exit(0);
+}
+echo "$n conflit(s) : catégorie de la tâche différente de celle du projet de destination.\n";
+foreach ($report['conflicts'] as $c) {
+    echo sprintf("#%d [%s] « %s » : catégorie %s, projet %s (catégorie attendue %s)\n", $c['id'], $c['status'], $c['title'], $c['category'], $c['project'], $c['expected']);
+}
+echo "Arbitrer à la main (changer la catégorie ou le projet de la tâche, avec l'ancien code ou en SQL), puis relancer.\n";
+exit(1);

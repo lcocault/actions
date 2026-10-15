@@ -38,8 +38,9 @@ final class BasePathTest extends HttpTestCase
 
     public function testRenderedPortalPageHasNoUnprefixedLocalUrl(): void
     {
-        $r = $this->call('GET', '/actions/tasks/new', self::HOST, basePath: self::PREFIX);
-        self::assertSame(200, $r->status);
+        // Page d'erreur 404 du portail (rendue sans base : le formulaire de tâche lit la liste des projets, voir BasePathTasksTest).
+        $r = $this->call('GET', '/actions/tasks/abc', self::HOST, basePath: self::PREFIX);
+        self::assertSame(404, $r->status);
         self::assertGreaterThan(0, preg_match_all('/\b(?:href|action|src)="([^"]*)"/', $r->body, $m));
         $local = array_filter($m[1], static fn (string $u): bool => str_starts_with($u, '/'));
         self::assertNotEmpty($local);

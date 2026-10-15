@@ -8,14 +8,15 @@ namespace Actions\Application;
  * Cas d'usage des tâches, seul point d'entrée des adaptateurs REST, MCP et portail.
  * Les règles métier sont ici (validation) et en base (cycles, contraintes); les adaptateurs ne les répètent pas.
  *
- * Forme d'une tâche (`Task`) : id, title, category, due_date, recurrence{interval,unit}|null,
- * estimated_minutes, description, project|null, conclusions|null, required_actions[{id,title}], status (todo|in_progress|done),
+ * Forme d'une tâche (`Task`) : id, title, category (dérivée du projet, lecture seule), due_date, recurrence{interval,unit}|null,
+ * estimated_minutes, description, project (nom, toujours renseigné), conclusions|null, required_actions[{id,title}], status (todo|in_progress|done),
  * completed_at (ISO 8601 UTC|null), created_at, updated_at.
  */
 final class TaskService
 {
     public function __construct(
         private readonly TaskRepository $repository,
+        private readonly ProjectRepository $projects,
         private readonly TaskValidator $validator = new TaskValidator(),
     ) {
     }
@@ -30,7 +31,7 @@ final class TaskService
         $task = $this->validator->validateCreate($data);
 
         return $this->repository->transaction(function () use ($task): array {
-            $id = $this->repository->insert($task);
+            $id = $this->repository->insert($task, $this->resolveProject($task['project']));
 
             return $this->mustFind($id);
         });
@@ -54,7 +55,13 @@ final class TaskService
      */
     public function list(array $filters = []): array
     {
-        return $this->repository->findAll($this->validator->validateFilters($filters));
+        $validated = $this->validator->validateFilters($filters);
+        if (isset($validated['project'])) {
+            $validated['project_id'] = $this->resolveProject($validated['project']);
+            unset($validated['project']);
+        }
+
+        return $this->repository->findAll($validated);
     }
 
     /**
@@ -121,16 +128,8 @@ final class TaskService
             $occurrence = null;
             if ($nextDueDate !== null) {
                 // Valeurs d'une ligne déjà valide : pas de revalidation. Aucun lien copié, état `todo` par défaut.
-                $occurrence = $this->mustFind($this->repository->insert([
-                    'title' => $current['title'],
-                    'category' => $current['category'],
-                    'due_date' => $nextDueDate,
-                    'recurrence' => $current['recurrence'],
-                    'estimated_minutes' => $current['estimated_minutes'],
-                    'description' => $current['description'],
-                    'project' => $current['project'], // recopié (F7)
-                    'conclusions' => null,            // propres à chaque occurrence
-                ]));
+                // Le projet (donc la catégorie) est recopié par le dépôt; conclusions à NULL.
+                $occurrence = $this->mustFind($this->repository->copyAsOccurrence($id, $nextDueDate));
             }
 
             return ['task' => $this->mustFind($id), 'next_occurrence' => $occurrence];
@@ -157,6 +156,10 @@ final class TaskService
             }
             if ($diff === []) {
                 return $current; // aucun changement : pas d'écriture, updated_at inchangé
+            }
+            if (isset($diff['project'])) { // 404 tâche, forme (pure), puis existence du projet
+                $diff['project_id'] = $this->resolveProject($diff['project']);
+                unset($diff['project']);
             }
             $this->repository->update($id, $diff);
 
@@ -212,6 +215,22 @@ final class TaskService
 
             return $this->mustFind($taskId);
         });
+    }
+
+    /**
+     * Nom de projet (casse exacte) -> identifiant.
+     *
+     * @throws InvalidTask project_invalid si aucun projet ne porte ce nom (vide compris)
+     */
+    private function resolveProject(string $name): int
+    {
+        $id = $this->projects->idByName($name);
+        if ($id === null) {
+            $available = $this->projects->names();
+            throw new InvalidTask('project_invalid', 'project', 'Projet inconnu.' . ($available === [] ? '' : ' Projets disponibles : ' . implode(', ', $available) . '.'));
+        }
+
+        return $id;
     }
 
     /** @return array<string,mixed> */

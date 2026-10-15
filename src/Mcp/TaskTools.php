@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Actions\Mcp;
 
+use Actions\Application\ProjectService;
 use Actions\Application\TaskService;
 use Actions\Application\TaskStatus;
 use Actions\Application\TaskValidator;
@@ -14,7 +15,7 @@ use Actions\Application\TaskValidator;
  */
 final class TaskTools
 {
-    public function __construct(private readonly TaskService $tasks)
+    public function __construct(private readonly TaskService $tasks, private readonly ProjectService $projects)
     {
     }
 
@@ -76,13 +77,34 @@ final class TaskTools
         throw new \LogicException('Outil inconnu : ' . $name);
     }
 
+    /**
+     * Noms de projets pour l'`enum` des schémas, lus à chaque `tools/list`. Base injoignable (ou liste vide) :
+     * schéma servi sans `enum` (erreur journalisée), pour que `tools/list` reste indépendant de la base.
+     *
+     * @return ?list<string>
+     */
+    private function projectNames(): ?array
+    {
+        try {
+            $names = $this->projects->names();
+        } catch (\Throwable $e) {
+            error_log('mcp: noms de projets indisponibles pour tools/list : ' . $e::class);
+
+            return null;
+        }
+
+        return $names === [] ? null : $names;
+    }
+
     /** @return list<array<string,mixed>> */
     public function definitions(): array
     {
+        $names = $this->projectNames();
+        $projectEnum = $names === null ? [] : ['enum' => $names];
+        $projectHint = $names === null ? 'nom d\'un projet configuré' : 'un des projets configurés';
         $id = ['type' => 'integer', 'minimum' => 1, 'description' => 'Identifiant de la tâche.'];
         $fields = [
             'title' => ['type' => 'string', 'maxLength' => 255, 'description' => 'Titre (255 caractères au plus, non vide).'],
-            'category' => ['type' => 'string', 'enum' => TaskValidator::CATEGORIES, 'description' => 'Catégorie : Pro ou Perso.'],
             'due_date' => ['type' => ['string', 'null'], 'format' => 'date', 'description' => 'Date butée AAAA-MM-JJ, ou null pour l\'effacer.'],
             'recurrence' => [
                 'type' => ['object', 'null'],
@@ -96,7 +118,7 @@ final class TaskTools
             ],
             'estimated_minutes' => ['type' => ['integer', 'null'], 'minimum' => 1, 'description' => 'Estimation de durée en minutes, ou null pour l\'effacer.'],
             'description' => ['type' => ['string', 'null'], 'description' => 'Description ou contexte, ou null pour l\'effacer.'],
-            'project' => ['type' => ['string', 'null'], 'enum' => [...TaskValidator::PROJECTS, null], 'description' => 'Projet (liste fermée), ou null pour l\'effacer.'],
+            'project' => ['type' => 'string', 'description' => 'Projet (' . $projectHint . ', casse exacte); la catégorie Pro/Perso en découle. Obligatoire à la création; ne peut pas être effacé.'] + $projectEnum,
             'conclusions' => ['type' => ['string', 'null'], 'description' => 'Conclusions (ce qui a été appris ou décidé), ou null pour l\'effacer.'],
         ];
         $status = ['type' => 'string', 'enum' => TaskStatus::codes()];
@@ -106,15 +128,15 @@ final class TaskTools
         ];
 
         return [
-            self::tool('create_task', 'Crée une tâche. Titre et catégorie obligatoires; les autres champs sont facultatifs (absents ou null = non renseignés). Renvoie la tâche créée.', $fields, ['title', 'category']),
+            self::tool('create_task', 'Crée une tâche. Titre et projet obligatoires (la catégorie Pro ou Perso est celle du projet, elle ne se saisit pas); les autres champs sont facultatifs (absents ou null = non renseignés). Renvoie la tâche créée.', $fields, ['title', 'project']),
             self::tool('get_task', 'Lit une tâche par son identifiant, avec ses actions requises (tâches à réaliser avant).', ['id' => $id], ['id'], ['readOnlyHint' => true]),
             self::tool(
                 'list_tasks',
                 'Liste les tâches (date butée croissante, sans date en dernier). Sans pagination : filtrer par état (par exemple todo), par catégorie ou par projet pour limiter la taille de la réponse.',
                 [
                     'status' => $status + ['description' => 'Filtre sur l\'état.'],
-                    'category' => ['type' => 'string', 'enum' => TaskValidator::CATEGORIES, 'description' => 'Filtre sur la catégorie.'],
-                    'project' => ['type' => 'string', 'enum' => TaskValidator::PROJECTS, 'description' => 'Filtre exact sur le projet.'],
+                    'category' => ['type' => 'string', 'enum' => TaskValidator::CATEGORIES, 'description' => 'Filtre sur la catégorie (celle du projet de la tâche).'],
+                    'project' => ['type' => 'string', 'description' => 'Filtre exact sur le projet (nom, casse exacte).'] + $projectEnum,
                 ],
                 [],
                 ['readOnlyHint' => true],

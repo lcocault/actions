@@ -22,9 +22,7 @@ final class RestTasksCrudTest extends DbTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->pdo->exec('DROP TABLE IF EXISTS task_dependencies, tasks, schema_migrations CASCADE');
-        $this->pdo->exec('DROP FUNCTION IF EXISTS task_dependencies_check_cycle()');
-        (new Migrator($this->pdo, __DIR__ . '/../../database/migrations'))->migrate();
+        $this->migrateFresh();
         $this->kernel = Bootstrap::kernel($this->config);
     }
 
@@ -96,7 +94,7 @@ final class RestTasksCrudTest extends DbTestCase
 
     public function testPostMinimalGives201WithLocationAndNullOptionals(): void
     {
-        $r = $this->post(['title' => 'Écrire', 'category' => 'Pro']);
+        $r = $this->post(['title' => 'Écrire', 'project' => 'Divers Pro']);
         self::assertSame(201, $r->status);
         $task = $this->json($r);
         self::assertSame('/api/v1/tasks/' . $task['id'], $r->headers['Location']);
@@ -115,7 +113,7 @@ final class RestTasksCrudTest extends DbTestCase
     public function testPostFullReturnsGivenValuesAndRoundTrips(): void
     {
         $in = [
-            'title' => 'Facture', 'category' => 'Perso', 'due_date' => '2020-02-29',
+            'title' => 'Facture', 'project' => 'Divers Perso', 'due_date' => '2020-02-29',
             'recurrence' => ['interval' => 2, 'unit' => 'week'], 'estimated_minutes' => 90, 'description' => "Ligne 1\nLigne 2",
         ];
         $task = $this->created($in);
@@ -127,32 +125,37 @@ final class RestTasksCrudTest extends DbTestCase
 
     public function testPostKeepsTitleAsIsAndAccepts255Characters(): void
     {
-        self::assertSame('  a  ', $this->created(['title' => '  a  ', 'category' => 'Pro'])['title']);
+        self::assertSame('  a  ', $this->created(['title' => '  a  ', 'project' => 'Divers Pro'])['title']);
         $long = str_repeat('é', 255);
-        self::assertSame($long, $this->created(['title' => $long, 'category' => 'Pro'])['title']);
+        self::assertSame($long, $this->created(['title' => $long, 'project' => 'Divers Pro'])['title']);
     }
 
     public function testPostAcceptsExplicitNullOptionals(): void
     {
-        $task = $this->created(['title' => 'T', 'category' => 'Pro', 'due_date' => null, 'recurrence' => null, 'estimated_minutes' => null, 'description' => null]);
+        $task = $this->created(['title' => 'T', 'project' => 'Divers Pro', 'due_date' => null, 'recurrence' => null, 'estimated_minutes' => null, 'description' => null]);
         self::assertNull($task['due_date']);
     }
 
     /** @return array<string,array{0:array<string,mixed>,1:string,2:string}> */
     public static function invalidCreateProvider(): array
     {
-        $ok = ['title' => 'T', 'category' => 'Pro'];
+        $ok = ['title' => 'T', 'project' => 'Divers Pro'];
 
         return [
-            'titre blanc' => [['title' => '   ', 'category' => 'Pro'], 'title_blank', 'title'],
-            'titre tabulations' => [['title' => "\t\n", 'category' => 'Pro'], 'title_blank', 'title'],
-            'titre absent' => [['category' => 'Pro'], 'title_blank', 'title'],
-            'titre 256' => [['title' => str_repeat('a', 256), 'category' => 'Pro'], 'title_too_long', 'title'],
-            'titre null' => [['title' => null, 'category' => 'Pro'], 'field_type_invalid', 'title'],
-            'titre nombre' => [['title' => 12, 'category' => 'Pro'], 'field_type_invalid', 'title'],
-            'catégorie casse' => [['title' => 'T', 'category' => 'pro'], 'category_invalid', 'category'],
-            'catégorie absente' => [['title' => 'T'], 'category_invalid', 'category'],
-            'catégorie null' => [['title' => 'T', 'category' => null], 'field_type_invalid', 'category'],
+            'titre blanc' => [['title' => '   ', 'project' => 'Divers Pro'], 'title_blank', 'title'],
+            'titre tabulations' => [['title' => "\t\n", 'project' => 'Divers Pro'], 'title_blank', 'title'],
+            'titre absent' => [['project' => 'Divers Pro'], 'title_blank', 'title'],
+            'titre 256' => [['title' => str_repeat('a', 256), 'project' => 'Divers Pro'], 'title_too_long', 'title'],
+            'titre null' => [['title' => null, 'project' => 'Divers Pro'], 'field_type_invalid', 'title'],
+            'titre nombre' => [['title' => 12, 'project' => 'Divers Pro'], 'field_type_invalid', 'title'],
+            'catégorie refusée (casse)' => [['title' => 'T', 'project' => 'Divers Pro', 'category' => 'pro'], 'field_unknown', 'category'],
+            'catégorie refusée (valide)' => [['title' => 'T', 'project' => 'Divers Pro', 'category' => 'Pro'], 'field_unknown', 'category'],
+            'catégorie null refusée' => [['title' => 'T', 'project' => 'Divers Pro', 'category' => null], 'field_unknown', 'category'],
+            'projet absent' => [['title' => 'T'], 'project_invalid', 'project'],
+            'projet null' => [['title' => 'T', 'project' => null], 'project_invalid', 'project'],
+            'projet inconnu' => [['title' => 'T', 'project' => 'Inexistant'], 'project_invalid', 'project'],
+            'projet casse' => [['title' => 'T', 'project' => 'divers pro'], 'project_invalid', 'project'],
+            'projet nombre' => [['title' => 'T', 'project' => 1], 'field_type_invalid', 'project'],
             'date inexistante' => [$ok + ['due_date' => '2026-02-30'], 'due_date_invalid', 'due_date'],
             'date mal formée' => [$ok + ['due_date' => '12/10/2026'], 'due_date_invalid', 'due_date'],
             'date non chaîne' => [$ok + ['due_date' => 20261012], 'field_type_invalid', 'due_date'],
@@ -210,20 +213,20 @@ final class RestTasksCrudTest extends DbTestCase
 
     public function testPostRecurrenceGivenAsListIsRefused(): void
     {
-        $r = $this->send('POST', '/api/v1/tasks', '{"title":"T","category":"Pro","due_date":"2026-10-12","recurrence":[1,"day"]}');
+        $r = $this->send('POST', '/api/v1/tasks', '{"title":"T","project":"Divers Pro","due_date":"2026-10-12","recurrence":[1,"day"]}');
         self::assertSame(422, $r->status);
         self::assertSame(0, $this->rows());
     }
 
     public function testPostIgnoresContentTypeAndQueryString(): void
     {
-        $r = $this->kernel->handle(new Request('POST', '/api/v1/tasks', ['content-type' => 'text/plain'], '{"title":"T","category":"Pro"}'));
+        $r = $this->kernel->handle(new Request('POST', '/api/v1/tasks', ['content-type' => 'text/plain'], '{"title":"T","project":"Divers Pro"}'));
         self::assertSame(201, $r->status);
     }
 
     public function testPostBigIntegerIsRefused(): void
     {
-        $r = $this->send('POST', '/api/v1/tasks', '{"title":"T","category":"Pro","estimated_minutes":99999999999999999999}');
+        $r = $this->send('POST', '/api/v1/tasks', '{"title":"T","project":"Divers Pro","estimated_minutes":99999999999999999999}');
         $this->assertError($r, 422, 'field_type_invalid', 'estimated_minutes');
     }
 
@@ -238,11 +241,11 @@ final class RestTasksCrudTest extends DbTestCase
 
     public function testListIsSortedByDueDateThenIdWithUndatedLast(): void
     {
-        $nodate1 = $this->created(['title' => 'sans date 1', 'category' => 'Pro'])['id'];
-        $late = $this->created(['title' => 'tard', 'category' => 'Pro', 'due_date' => '2026-12-01'])['id'];
-        $early1 = $this->created(['title' => 'tôt 1', 'category' => 'Perso', 'due_date' => '2026-01-01'])['id'];
-        $nodate2 = $this->created(['title' => 'sans date 2', 'category' => 'Pro'])['id'];
-        $early2 = $this->created(['title' => 'tôt 2', 'category' => 'Pro', 'due_date' => '2026-01-01'])['id'];
+        $nodate1 = $this->created(['title' => 'sans date 1', 'project' => 'Divers Pro'])['id'];
+        $late = $this->created(['title' => 'tard', 'project' => 'Divers Pro', 'due_date' => '2026-12-01'])['id'];
+        $early1 = $this->created(['title' => 'tôt 1', 'project' => 'Divers Perso', 'due_date' => '2026-01-01'])['id'];
+        $nodate2 = $this->created(['title' => 'sans date 2', 'project' => 'Divers Pro'])['id'];
+        $early2 = $this->created(['title' => 'tôt 2', 'project' => 'Divers Pro', 'due_date' => '2026-01-01'])['id'];
 
         $r = $this->send('GET', '/api/v1/tasks');
         self::assertSame(200, $r->status);
@@ -255,7 +258,7 @@ final class RestTasksCrudTest extends DbTestCase
 
     public function testPatchChangesOnlyGivenFieldsAndAdvancesUpdatedAt(): void
     {
-        $t = $this->created(['title' => 'A', 'category' => 'Pro', 'due_date' => '2026-10-12', 'estimated_minutes' => 30, 'description' => 'd']);
+        $t = $this->created(['title' => 'A', 'project' => 'Divers Pro', 'due_date' => '2026-10-12', 'estimated_minutes' => 30, 'description' => 'd']);
         $id = $t['id'];
         $this->backdate($id);
         $before = $this->updatedAt($id);
@@ -274,7 +277,7 @@ final class RestTasksCrudTest extends DbTestCase
     public function testPatchNullClearsEachOptionalField(): void
     {
         $id = $this->created([
-            'title' => 'A', 'category' => 'Pro', 'due_date' => '2026-10-12',
+            'title' => 'A', 'project' => 'Divers Pro', 'due_date' => '2026-10-12',
             'recurrence' => ['interval' => 1, 'unit' => 'day'], 'estimated_minutes' => 30, 'description' => 'd',
         ])['id'];
         foreach (['recurrence', 'estimated_minutes', 'description'] as $f) {
@@ -289,26 +292,26 @@ final class RestTasksCrudTest extends DbTestCase
 
     public function testPatchEmptyObjectAndIdenticalValuesAreNoOps(): void
     {
-        $id = $this->created(['title' => 'A', 'category' => 'Pro'])['id'];
+        $id = $this->created(['title' => 'A', 'project' => 'Divers Pro'])['id'];
         $this->backdate($id);
         $before = $this->updatedAt($id);
         $r = $this->send('PATCH', "/api/v1/tasks/$id", '{}');
         self::assertSame(200, $r->status);
         self::assertSame('A', $this->json($r)['title']);
-        self::assertSame(200, $this->patch($id, ['title' => 'A', 'category' => 'Pro'])->status);
+        self::assertSame(200, $this->patch($id, ['title' => 'A', 'project' => 'Divers Pro'])->status);
         self::assertSame($before, $this->updatedAt($id));
     }
 
     public function testPatchClearingDueDateOfRecurringTaskIsRefusedAndTaskUnchanged(): void
     {
-        $t = $this->created(['title' => 'A', 'category' => 'Pro', 'due_date' => '2026-10-12', 'recurrence' => ['interval' => 1, 'unit' => 'month']]);
+        $t = $this->created(['title' => 'A', 'project' => 'Divers Pro', 'due_date' => '2026-10-12', 'recurrence' => ['interval' => 1, 'unit' => 'month']]);
         $this->assertError($this->patch($t['id'], ['due_date' => null]), 422, 'recurrence_requires_due_date', 'recurrence');
         self::assertSame($t, $this->json($this->send('GET', '/api/v1/tasks/' . $t['id'])));
     }
 
     public function testPatchRecurrenceOnTaskWithoutDueDateIsRefused(): void
     {
-        $id = $this->created(['title' => 'A', 'category' => 'Pro'])['id'];
+        $id = $this->created(['title' => 'A', 'project' => 'Divers Pro'])['id'];
         $this->assertError($this->patch($id, ['recurrence' => ['interval' => 1, 'unit' => 'day']]), 422, 'recurrence_requires_due_date');
     }
 
@@ -317,9 +320,11 @@ final class RestTasksCrudTest extends DbTestCase
     {
         return [
             'titre null' => [['title' => null], 'field_type_invalid', 'title'],
-            'catégorie null' => [['category' => null], 'field_type_invalid', 'category'],
+            'catégorie null refusée' => [['category' => null], 'field_unknown', 'category'],
             'titre blanc' => [['title' => ' '], 'title_blank', 'title'],
-            'catégorie invalide' => [['category' => 'Autre'], 'category_invalid', 'category'],
+            'catégorie refusée' => [['category' => 'Autre'], 'field_unknown', 'category'],
+            'projet null' => [['project' => null], 'project_invalid', 'project'],
+            'projet inconnu' => [['project' => 'Inexistant'], 'project_invalid', 'project'],
             'id' => [['id' => 9], 'field_unknown', 'id'],
             'required_actions' => [['required_actions' => [1]], 'field_unknown', 'required_actions'],
             'created_at' => [['created_at' => 'x'], 'field_unknown', 'created_at'],
@@ -332,7 +337,7 @@ final class RestTasksCrudTest extends DbTestCase
     #[DataProvider('invalidPatchProvider')]
     public function testPatchInvalidGives422AndTaskUnchanged(array $body, string $code, string $field): void
     {
-        $t = $this->created(['title' => 'A', 'category' => 'Pro']);
+        $t = $this->created(['title' => 'A', 'project' => 'Divers Pro']);
         $this->assertError($this->patch($t['id'], $body), 422, $code, $field);
         self::assertSame($t, $this->json($this->send('GET', '/api/v1/tasks/' . $t['id'])));
     }
@@ -350,7 +355,7 @@ final class RestTasksCrudTest extends DbTestCase
     public function testPatchInvalidJsonGives400EvenForUnknownId(string $body): void
     {
         $this->assertError($this->send('PATCH', '/api/v1/tasks/999', $body), 400, 'invalid_json');
-        $id = $this->created(['title' => 'A', 'category' => 'Pro'])['id'];
+        $id = $this->created(['title' => 'A', 'project' => 'Divers Pro'])['id'];
         $this->assertError($this->send('PATCH', "/api/v1/tasks/$id", $body), 400, 'invalid_json');
         self::assertSame('A', $this->json($this->send('GET', "/api/v1/tasks/$id"))['title']);
     }
@@ -363,8 +368,8 @@ final class RestTasksCrudTest extends DbTestCase
 
     public function testPatchKeepsRequiredActions(): void
     {
-        $a = $this->created(['title' => 'A', 'category' => 'Pro'])['id'];
-        $b = $this->created(['title' => 'B', 'category' => 'Pro'])['id'];
+        $a = $this->created(['title' => 'A', 'project' => 'Divers Pro'])['id'];
+        $b = $this->created(['title' => 'B', 'project' => 'Divers Pro'])['id'];
         self::assertSame(200, $this->send('PUT', "/api/v1/tasks/$a/required-actions/$b")->status);
         $task = $this->json($this->patch($a, ['title' => 'A2']));
         self::assertSame([['id' => $b, 'title' => 'B']], $task['required_actions']);
@@ -375,7 +380,7 @@ final class RestTasksCrudTest extends DbTestCase
     public function testDeleteUnknownAndTwiceGive404(): void
     {
         $this->assertError($this->send('DELETE', '/api/v1/tasks/999'), 404, 'task_not_found');
-        $id = $this->created(['title' => 'A', 'category' => 'Pro'])['id'];
+        $id = $this->created(['title' => 'A', 'project' => 'Divers Pro'])['id'];
         self::assertSame(204, $this->send('DELETE', "/api/v1/tasks/$id")->status);
         $this->assertError($this->send('DELETE', "/api/v1/tasks/$id"), 404, 'task_not_found');
     }
@@ -387,9 +392,9 @@ final class RestTasksCrudTest extends DbTestCase
             $this->assertError($r, 405, 'method_not_allowed');
             self::assertSame('GET, POST', $r->headers['Allow']);
         }
-        $id = $this->created(['title' => 'A', 'category' => 'Pro'])['id'];
+        $id = $this->created(['title' => 'A', 'project' => 'Divers Pro'])['id'];
         foreach (['PUT', 'POST'] as $m) {
-            $r = $this->send($m, "/api/v1/tasks/$id", '{"title":"B","category":"Pro"}');
+            $r = $this->send($m, "/api/v1/tasks/$id", '{"title":"B","project":"Divers Pro"}');
             $this->assertError($r, 405, 'method_not_allowed');
             self::assertSame('GET, PATCH, DELETE', $r->headers['Allow']);
         }
@@ -405,7 +410,7 @@ final class RestTasksCrudTest extends DbTestCase
         $pdo->method('prepare')->willThrowException($e);
         $pdo->method('beginTransaction')->willThrowException($e);
         $kernel = $this->kernelWith($pdo);
-        foreach ([['POST', '/api/v1/tasks', '{"title":"T","category":"Pro"}'], ['GET', '/api/v1/tasks', null], ['PATCH', '/api/v1/tasks/1', '{"title":"T"}']] as [$m, $p, $b]) {
+        foreach ([['POST', '/api/v1/tasks', '{"title":"T","project":"Divers Pro"}'], ['GET', '/api/v1/tasks', null], ['PATCH', '/api/v1/tasks/1', '{"title":"T"}']] as [$m, $p, $b]) {
             $r = $this->send($m, $p, $b, $kernel);
             self::assertSame(['error' => ['code' => 'internal_error', 'message' => 'Erreur interne.']], $this->assertErrorBody($r, 500));
             foreach (['XX000', 'SECRET', 'SELECT', 'tasks"', 'PDO'] as $leak) {
@@ -417,7 +422,7 @@ final class RestTasksCrudTest extends DbTestCase
     public function testUnreachableDatabaseGives503(): void
     {
         $kernel = Bootstrap::kernel(new Config('test', '127.0.0.1', 1, 'secret_db', 'secret_user', 'secret_pwd', []));
-        foreach ([['POST', '/api/v1/tasks', '{"title":"T","category":"Pro"}'], ['GET', '/api/v1/tasks', null], ['PATCH', '/api/v1/tasks/1', '{}']] as [$m, $p, $b]) {
+        foreach ([['POST', '/api/v1/tasks', '{"title":"T","project":"Divers Pro"}'], ['GET', '/api/v1/tasks', null], ['PATCH', '/api/v1/tasks/1', '{}']] as [$m, $p, $b]) {
             $r = $this->send($m, $p, $b, $kernel);
             $this->assertError($r, 503, 'service_unavailable');
             foreach (['127.0.0.1', 'secret_db', 'secret_user', 'secret_pwd', 'SQLSTATE'] as $leak) {
@@ -437,12 +442,14 @@ final class RestTasksCrudTest extends DbTestCase
     private function kernelWith(\PDO $pdo): Kernel
     {
         $diagnostic = new \Actions\Application\Diagnostic(static fn (): \PDO => $pdo);
-        $service = new TaskService(new TaskRepository(static fn (): \PDO => $pdo));
+        $connect = static fn (): \PDO => $pdo;
+        $service = \Actions\Tests\Support\Services::tasks($connect);
+        $projects = \Actions\Tests\Support\Services::projects($connect);
 
         return new Kernel(
-            new \Actions\Portal\PortalAdapter($service, new \Actions\Tests\Support\ArraySession(), ['127.0.0.1']),
-            new \Actions\Rest\RestAdapter($diagnostic, new \Actions\Rest\TaskController($service)),
-            new \Actions\Mcp\McpAdapter($diagnostic, $service, [], ['127.0.0.1']),
+            new \Actions\Portal\PortalAdapter($service, $projects, new \Actions\Tests\Support\ArraySession(), ['127.0.0.1']),
+            new \Actions\Rest\RestAdapter($diagnostic, new \Actions\Rest\TaskController($service), new \Actions\Rest\ProjectController($projects)),
+            new \Actions\Mcp\McpAdapter($diagnostic, $service, $projects, [], ['127.0.0.1']),
         );
     }
 
@@ -450,7 +457,7 @@ final class RestTasksCrudTest extends DbTestCase
 
     public function testEndToEndJourney(): void
     {
-        $task = $this->created(['title' => 'Parcours', 'category' => 'Perso']);
+        $task = $this->created(['title' => 'Parcours', 'project' => 'Divers Perso']);
         $id = $task['id'];
         self::assertSame($task, $this->json($this->send('GET', "/api/v1/tasks/$id")));
         $patched = $this->json($this->patch($id, ['description' => 'maj', 'due_date' => '2026-11-01']));

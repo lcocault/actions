@@ -10,6 +10,8 @@ Légende des statuts : **existant** (dans le dépôt, vérifiable), **proposé**
 
 **Tranche « Projet et Conclusions » (2026-10-13)** : besoin validé par l'utilisateur, conception **validée** et livrée en local (migration `0003`, contrats, portail, tests) dans « Champs "Projet" et "Conclusions" (tranche P) » plus bas. Conception validée et livrée en local (voir la section); lus par l'Architecte pour l'analyse d'impact : `0002`, `TaskRepository`, `TaskValidator`, `TaskService`, `TaskController`, `TaskTools`, `TaskPages`, `TaskForm`, `DomainStatus`, `Messages`, vues `task_list`/`task_form`/`task_detail`, `TaskSchemaTest` (passage `0002`), assertions de `McpToolsTest`. Aucun test rejoué.
 
+**Tranche « Projets configurables » (2026-10-15)** : décisions PC1 à PC11 validées par l'utilisateur (via le backlog); conception **validée** (2026-10-15), non implémentée, dans « Projets configurables et catégorie portée par le projet ». Lus par l'Architecte : `TaskRepository`, `TaskValidator`, `TaskService`, `TaskController`, `RestAdapter`, `DomainStatus`, `Bootstrap`, `Migrator`, `InvalidTask`, `TaskIsRequired`, `ErrorBody`, migrations `0002` et `0003`, `DbTestCase`; `TaskTools`, `TaskPages`, `TaskForm` et les vues par recherche ciblée seulement.
+
 ## Décisions validées (tranche « squelette »)
 
 - **Validé** : PHP sans framework + Composer minimal (chaque dépendance justifiée).
@@ -1019,6 +1021,8 @@ Points 2 à 6 : **validés** par l'approbation de l'utilisateur (2026-10-12) et 
 
 ## Champs « Projet » et « Conclusions » (tranche P) — conception du 2026-10-13, **validée par l'utilisateur et livrée en local**
 
+**Mise à jour 2026-10-15 :** pour `project` (liste fermée, `CHECK`) et la catégorie saisie, cette section est **remplacée (validé le 2026-10-15)** par « Projets configurables et catégorie portée par le projet »; `conclusions` reste valable. Texte d'origine :
+
 Besoin **validé** par l'utilisateur (2026-10-13, F1, F2, F3, F5, F6, F7 du backlog) : `project` facultatif, liste fermée `MS-HR`, `Jardin/Maison`, `OPF`, `Erendil`, `CHECK` en base, sensible à la casse, hors liste = 422; `conclusions` texte facultatif traité comme `description`, saisissable à tout moment; filtre exact `project` en ET avec état et catégorie sur REST, MCP et portail; la terminaison d'une périodique recopie `project`, pas `conclusions`. **Validé** (utilisateur, après la livraison) : la conception ci-dessous telle quelle (schéma `0003`, forme `Task`, contrats REST/MCP/portail, code `project_invalid`, recopie à la terminaison), ainsi que F4 (liste unique, aucune règle croisée avec la catégorie) et F8 (comparaison sensible à la casse, aucun `trim`). **Existant** (rapporté par le Developer, **sans écart** avec la conception; non rejoué par l'Architecte) : `database/migrations/0003_task_project_conclusions.sql` présent dans le dépôt; suite complète 630 tests OK sur PostgreSQL 17 local; smoke HTTP réel OK. **Non vérifié** : `0003` sur PostgreSQL 16 et 18, et sur AlwaysData (droit `ALTER TABLE`, pgBouncer), où aucune migration n'a été appliquée; rendu navigateur du portail. Dans cette section, les mentions « (proposé) » des titres et du tableau des règles valent désormais « **validé, existant** »; les points « non vérifié » restent valables.
 
 ### Migration `0003_task_project_conclusions.sql` (proposé; le fichier fera foi)
@@ -1122,6 +1126,147 @@ Tous les points ci-dessous sont **validés** par l'utilisateur ; F4 et F8 sont c
 **Structurant** : (1) schéma `0003` (deux colonnes `text` nullables, `CHECK` `tasks_project_valid` sur la liste fermée, pas d'index); (2) ajout de `project` et `conclusions` à la forme `Task` renvoyée par REST, MCP et portail; (3) contrats modifiés : paramètre `?project=` de `GET /tasks`, `project`/`conclusions` sur `POST`/`PATCH`, schémas de `create_task`, `update_task`, `list_tasks`; (4) nouveau code d'erreur `project_invalid` (422); (5) recopie de `project` (et non de `conclusions`) à la terminaison, par `changeStatus`.
 **Hypothèses à confirmer** : F4 (liste unique, aucune règle croisée avec la catégorie); F8 (sensible à la casse, aucun `trim`); nom `project_invalid`; `?project=` vide = 422 en REST (cohérent avec `category`) alors que le portail le traduit en « Tous »; `conclusions` vide conservé tel quel en REST/MCP mais converti en `null` par le portail (comme `description`); colonne « Projet » dans la liste du portail (présentation, modifiable).
 **Non vérifié** : application de `0003` sur PostgreSQL 16 et 18 et sur AlwaysData (droit `ALTER TABLE` du rôle, pgBouncer) : à tester sur base jetable avant déploiement, sans migration opérationnelle sans autorisation.
+
+## Projets configurables et catégorie portée par le projet (tranches 1 et 2) — conception du 2026-10-15, **validée** (utilisateur, 2026-10-15)
+
+**Statuts.** **Toute la conception ci-dessous est validée par l'utilisateur le 2026-10-15** (opposable au Developer), aux écarts et précisions près listés ici. Rien n'est implémenté; les points « non vérifié » restent à vérifier. Décisions de l'utilisateur : option A, table `projects` (index unique sur `lower(name)`, FK `RESTRICT`), migration unique `0004` avec rapport en lecture seule et garde, ruptures de `/api/v1` sans `/api/v2`, REST projets par identifiant et nouveaux codes, validation de tâche en deux temps; hypothèses H1 à H6, H8, H9; noms d'accueil **« Divers Pro »** (Pro) et **« Divers Perso »** (Perso); **PC12** : projets d'accueil ordinaires, sans règle (option a); **PC13** : `PATCH project:null` -> 422 `project_invalid`, clé absente = inchangé; **PC14** : nom référencé et filtré en **casse exacte**; **H7 tranchée** : le portail **ignore** un champ `category` forgé (pas de 422 côté portail), REST et MCP le refusent (`field_unknown`) — écart assumé par rapport à PC11 pour le portail. Rappel des décisions PC1 à PC11 (validées plus tôt, via le backlog) : projets = données (nom + catégorie `Pro`/`Perso`); catégorie de la tâche dérivée du projet et non saisissable (`category` en écriture : `field_unknown` sur REST, MCP, portail); projet obligatoire; deux projets d'accueil; `MS-HR` Pro, `Jardin/Maison`/`OPF`/`Erendil` Perso; rapport de conflits puis arrêt; suppression d'un projet utilisé refusée (409); renommage libre; changement de catégorie d'un projet propagé aux tâches (terminées comprises) avec nombre de tâches touchées; nom <= 255 caractères, stocké tel quel, unicité insensible à la casse; MCP en lecture seule; découpage en deux tranches. Plus aucun point de conception de cette section n'est en attente de décision; la migration n'est pas écrite (plus bloquée).
+
+Cette section **remplace**, pour `project` et `category`, la tranche P ci-dessus (liste fermée, `tasks_project_valid`, `TaskValidator::PROJECTS`, catégorie saisie). `conclusions` n'est pas touché.
+
+### Choix technique : catégorie dérivée (validé)
+
+Options : (A) colonne `tasks.category` **supprimée**, catégorie lue par jointure `projects`; (B) colonne conservée, garantie par clé étrangère composite `(project_id, category) -> projects(id, category)` avec `ON UPDATE CASCADE`; (C) colonne conservée, maintenue par trigger.
+**Retenu et validé : (A).** La cohérence tâche/projet est vraie par construction (une seule donnée, aucun trigger, aucune clé composite à nommer), quel que soit le chemin d'écriture; changer la catégorie d'un projet (PC6) est un seul `UPDATE projects` qui est instantanément vu par toutes les tâches, terminées comprises; le nombre de tâches touchées est un `count(*)`. Coût : une jointure sur `projects` (clé primaire, une poignée de lignes) dans les lectures, et `category` doit être qualifié (`p.category`) dans les requêtes. (B) double la donnée et réécrit en cascade toutes les lignes `tasks` à chaque changement; (C) ajoute de la logique PL/pgSQL sans nécessité. Conséquence assumée : changer la catégorie d'un projet **n'écrit aucune ligne `tasks`** : `updated_at` des tâches ne change pas (hypothèse H2, validée).
+
+### Modèle de données et migration `0004_projects.sql` (validé; le fichier fera foi)
+
+```sql
+CREATE TABLE projects (
+  id       bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name     text NOT NULL,
+  category text NOT NULL,
+  CONSTRAINT projects_name_not_blank CHECK (btrim(name) <> '' AND char_length(name) <= 255),
+  CONSTRAINT projects_category_valid CHECK (category IN ('Pro', 'Perso'))
+);
+CREATE UNIQUE INDEX projects_name_lower_key ON projects (lower(name));
+
+INSERT INTO projects (name, category) VALUES
+  ('MS-HR', 'Pro'), ('Jardin/Maison', 'Perso'), ('OPF', 'Perso'), ('Erendil', 'Perso'),
+  ('Divers Pro', 'Pro'), ('Divers Perso', 'Perso');      -- noms d'accueil validés
+
+ALTER TABLE tasks ADD COLUMN project_id bigint;
+-- 1. garde : DO $$ ... RAISE EXCEPTION si des tâches ont une catégorie différente de celle du projet
+--    (tasks.project IS NOT NULL ET tasks.category <> projects.category pour le projet de même nom);
+--    le message contient le nombre total et les 50 premières (id, titre, catégorie, projet).
+-- 2. rattachement (n'écrit que project_id : updated_at et état conservés) :
+UPDATE tasks t SET project_id = p.id FROM projects p
+ WHERE p.name = COALESCE(t.project, CASE t.category WHEN 'Pro' THEN 'Divers Pro' ELSE 'Divers Perso' END);
+-- 3. verrouillage du modèle :
+ALTER TABLE tasks ALTER COLUMN project_id SET NOT NULL,
+  ADD CONSTRAINT tasks_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects (id) ON DELETE RESTRICT,
+  DROP COLUMN category, DROP COLUMN project;           -- emporte tasks_category_valid et tasks_project_valid
+CREATE INDEX tasks_project_id_idx ON tasks (project_id);
+```
+
+- **Nom de projet** : `text`, unicité insensible à la casse par **index unique sur expression `lower(name)`** (PostgreSQL 17, § 11.7 « Indexes on Expressions », consulté le 2026-10-15 : un index `UNIQUE` sur expression interdit les lignes qui ne diffèrent que par la casse). Alternative écartée : `citext` (extension à activer, disponibilité sur le compte non vérifiée; AlwaysData documente l'activation d'extensions « en un clic » pour une liste, page consultée le 2026-10-15, mais `citext` n'y est pas cité dans ce que j'ai lu). Limite : `lower()` dépend de la locale de la base; pour les caractères non ASCII, la détection de doublon dépend de `LC_CTYPE` (**non vérifié sur AlwaysData**; ASCII garanti). Le `CHECK` du nom n'est jamais plus strict que le validateur (celui-ci refuse aussi tabulations/retours à la ligne seuls).
+- **Clé étrangère** `tasks_project_id_fkey` nommée explicitement (le dépôt reconnaît l'erreur par SQLSTATE + nom, règle existante) : `23503` à la suppression d'un projet utilisé -> `ProjectInUse`; `23503` à l'insertion/mise à jour d'une tâche (projet supprimé entre la résolution du nom et l'écriture) -> `project_invalid`. Aucun verrou supplémentaire : la base arbitre.
+- **Pas de table de catégories** : `Pro`/`Perso` restent un `CHECK` de `projects.category` (même choix que 0001). Pas de colonne « projet d'accueil » (PC12 validé : aucune règle) : le code ne référence jamais les noms d'accueil, qui n'existent que dans la migration.
+- **Pas de dates sur `projects`** (hors périmètre PC), pas d'ordre d'affichage.
+- **Migration en deux temps (PC3).** *Temps 1, lecture seule* : commande `php bin/report-project-conflicts` (validée; même garde `APP_ENV` que `bin/migrate`, `--allow-env=` documenté), exécutée dans `BEGIN READ ONLY`, sur le schéma **avant** `0004`. Elle affiche, pour chaque tâche dont `project` n'est pas nul et dont `category` diffère de celle du projet de destination (`MS-HR` Pro; les trois autres Perso) : id, titre, état, catégorie actuelle, projet, catégorie attendue; plus le nombre de tâches sans projet par catégorie (qui rejoindront l'accueil de leur catégorie, sans conflit); code de sortie 0 sans conflit, 1 sinon; refuse de s'exécuter si `projects` existe déjà. *Temps 2, migration* : la garde du point 1 relit **la même règle** et lève une exception si au moins un conflit existe; la transaction de `Migrator` annule tout (aucun état partiel, `schema_migrations` sans `0004`) et le message d'échec, relayé par `Migrator`, contient le nombre et la liste tronquée (le rendu du message PDO avec `RAISE` est à confirmer par un test). L'arbitrage (changer la catégorie ou le projet de la tâche) est manuel, avant migration, avec l'ancien code (`PATCH`) ou en SQL. La règle existe deux fois (rapport, garde) : un test d'intégration vérifie que le rapport liste exactement les tâches que la migration refuse.
+- **Rejouable** : celle de `bin/migrate` (rejeu = « Rien à appliquer »); après un arrêt pour conflits, relancer après arbitrage suffit. Fichier non idempotent par construction (`CREATE TABLE`, `DROP COLUMN`), comme `0003`.
+- **Données** : aucune tâche perdue ni modifiée en dehors de `project_id`; `updated_at` conservé. `DROP COLUMN category`/`project` est destructif **mais sans perte d'information** une fois le contrôle de conflits passé (la catégorie se déduit du projet; les tâches sans projet portent la catégorie de leur accueil). Sauvegarde `pg_dump` obligatoire avant toute application hors local; retour arrière = restauration (pas de « down »).
+- **Compatibilité PostgreSQL / AlwaysData.** Utilisé : `CREATE TABLE ... GENERATED AS IDENTITY`, index unique sur expression, `ALTER TABLE ... ADD/DROP COLUMN`, clé étrangère, `DO $$ ... $$` PL/pgSQL, `COALESCE`, `string_agg`. Tout est standard PostgreSQL 16 à 18 (versions AlwaysData : 16, 17, 18, page consultée le 2026-10-15). `DO` exige `USAGE` sur le langage; `plpgsql` est installé par défaut et approuvé (page `sql-do`, PostgreSQL 17, consultée le 2026-10-15); AlwaysData n'interdit que les langages non approuvés (même page AlwaysData). Aucune nouvelle dépendance aux droits : `0001` exige déjà PL/pgSQL (fonction + trigger). **Non vérifié** : exécution réelle sur PostgreSQL 16/18 et sur AlwaysData (droits du rôle sur `ALTER TABLE`/`DO`, pgBouncer), `LC_CTYPE`. Aucune migration AlwaysData sans autorisation explicite. Piège de test : `UPDATE` puis `ALTER TABLE` dans la même transaction n'échoue que s'il reste des événements de déclencheur différés (les clés étrangères de `task_dependencies` sont immédiates, donc aucun); à couvrir par un test avec données.
+- **Ordre** : appliquer `0004` **avant** le code (l'ancien code, qui écrit `category`, ne fonctionne plus sur le nouveau schéma; l'inverse non plus) : rupture assumée, local seulement.
+
+### Couche commune (validé)
+
+- **Nouveaux composants** `Application` : `ProjectService` (cas d'usage), `ProjectValidator` (pur), `ProjectRepository` (SQL + traduction `PDOException`), erreurs `InvalidProject`, `ProjectNotFound`, `ProjectNameTaken`, `ProjectInUse`. Composition dans `Bootstrap` (`projectService()`), injecté dans `ProjectController` (REST), `McpAdapter`/`TaskTools` (enums, puis `list_projects`) et `PortalAdapter` (listes). `TaskService` reçoit le dépôt de projets pour résoudre un nom.
+- **Forme `Project`** : `{id:int, name:string, category:"Pro"|"Perso", task_count:int}` (`task_count` : toutes les tâches, tous états, utile à la décision de suppression).
+- **`ProjectService`** : `list()` (tri `lower(name)`, puis `id`), `get(int)`, `create(array)` (`name`, `category` obligatoires), `update(int, array)` (`name`, `category` facultatifs, `null` interdit, clé absente inchangée; renvoie `{project, tasks_recategorized:int}`), `delete(int)`, `names()`. `update` : transaction `READ COMMITTED`, ligne projet lue `FOR UPDATE`, validation de l'état fusionné, aucune écriture si rien ne change; `tasks_recategorized` = nombre de tâches du projet (tous états) si la catégorie change effectivement, sinon 0 (valeur de la transaction, indicative en cas de création concurrente de tâche).
+- **`ProjectValidator`** (pur, fail-fast; valeurs stockées telles quelles, sans `trim`) :
+
+| Champ | Règle | `code` |
+|---|---|---|
+| `name` | chaîne UTF-8 valide sans octet NUL; non vide ni blancs seuls (`\s`, `\p{Z}`); 255 caractères au plus | `project_name_blank`, `project_name_too_long`, `text_invalid` |
+| `category` | exactement `Pro` ou `Perso` (sensible à la casse) | `category_invalid` |
+| autre clé / type | clé inconnue (dont `id`, `task_count`); non-chaîne, `null` inclus | `field_unknown`, `field_type_invalid` |
+
+  Absent à la création : `project_name_blank` / `category_invalid` (même convention que `title`/`category`).
+- **Unicité** : aucune prévérification; `INSERT`/`UPDATE` refusés par `23505` + nom `projects_name_lower_key` -> `ProjectNameTaken` (409).
+- **Suppression** : `DELETE` direct (instruction unique) ; `23503` + `tasks_project_id_fkey` -> `ProjectInUse` (nombre de tâches relu ensuite; tolérance identique à `TaskIsRequired`); 0 ligne -> `ProjectNotFound`. Aucun archivage, aucune règle sur les projets d'accueil.
+- **Validation d'une tâche : le validateur n'est plus entièrement pur.** Découpage proposé, pour garder `TaskValidator` testable sans base : (1) `TaskValidator` (pur) retire `category` de `FIELDS` (donc `field_unknown` automatique, `details.field = "category"`) et ne connaît plus `PROJECTS`; il contrôle la **forme** de `project` : absent ou `null` à la création, `null` en modification (PC13 validé) : `project_invalid` (`details.field = "project"`); non-chaîne : `field_type_invalid`; clé absente en modification : inchangé. (2) `TaskService` résout ensuite le **nom en identifiant** dans la même transaction, par `ProjectRepository::idByName(string)`; nom inconnu (dont chaîne vide) : `project_invalid`. Ordre de `update` : 404 tâche, forme (pure), existence du projet. Message : « Projet inconnu. Projets disponibles : A, B, C. » (liste lue en base). Tous les refus sont des `InvalidTask` (422), codes inchangés. Le filtre `project` de `list()` résout de la même façon (inconnu : 422 `project_invalid`, vide compris); le filtre `category` reste validé à `Pro`/`Perso`. `TaskValidator::CATEGORIES` reste la source de la liste (utilisée par les filtres, les schémas MCP et `ProjectValidator`); `TaskValidator::PROJECTS` et `projectList()` disparaissent.
+- **`TaskRepository`** : `TASK_COLUMNS` qualifié (`t.`), `p.name AS project`, `p.category AS category`, `JOIN projects p ON p.id = t.project_id`; `FOR UPDATE OF t` (jamais `FOR UPDATE` seul, qui verrouillerait aussi la ligne projet); `insert` et `update` écrivent `project_id` (jamais `category`); filtre `p.category = :category`, `t.project_id = :project_id`. `findAll` conserve l'ordre `due_date`, `id`.
+- **Terminaison d'une périodique** : la nouvelle occurrence copie `project_id` **dans le dépôt**, sans exposer l'identifiant interne : méthode `copyAsOccurrence(int $sourceId, string $dueDate): int` en un `INSERT ... SELECT` depuis la ligne source (déjà verrouillée `FOR UPDATE`) qui recopie titre, `project_id`, durée, description, périodicité, met `conclusions` à `NULL`, aucune dépendance, état par défaut. Remplace le tableau construit par `changeStatus` (qui contenait `category` et `project`). La catégorie suit donc le projet; si le projet est renommé ou change de catégorie, l'occurrence suit. Comportement observable inchangé.
+- **Identifiant de projet dans `Task`** : non exposé (la référence est le nom, en casse exacte, PC14 validé); `Task` garde `category` (dérivée, en lecture seule) et `project` (nom, désormais toujours non nul).
+
+### Contrat REST (validé; `/api/v1`)
+
+**Projets** (nouveau; chemins par identifiant car un nom peut contenir `/`) :
+
+| Opération | Entrée | Succès | Erreurs |
+|---|---|---|---|
+| `GET /api/v1/projects` | aucune | 200, tableau de `Project` | — |
+| `POST /api/v1/projects` | `{name, category}` | 201, `Project`, `Location: /api/v1/projects/{id}` | 400 `invalid_json`; 422 `project_name_blank`, `project_name_too_long`, `text_invalid`, `category_invalid`, `field_type_invalid`, `field_unknown` (`details.field`); 409 `project_name_taken` (`details.field = "name"`) |
+| `GET /api/v1/projects/{id}` | — | 200, `Project` | 404 `project_not_found` |
+| `PATCH /api/v1/projects/{id}` | `name` et/ou `category` | 200, `Project` + `tasks_recategorized` | 400 `invalid_json`; 404 `project_not_found` (avant 422); mêmes 422/409 qu'à la création |
+| `DELETE /api/v1/projects/{id}` | — | 204 | 404 `project_not_found`; 409 `project_in_use` (`details`: `id`, `task_count`) |
+
+Autre méthode : 405 + `Allow`. Identifiant non entier positif : 404 `not_found` (`PathId`). Format d'erreur commun inchangé.
+
+**Tâches** (modifié) :
+
+| Opération | Changement | Compatibilité |
+|---|---|---|
+| `POST /tasks` | `project` (nom) **obligatoire**; `category` refusée : 422 `field_unknown`, `details.field = "category"`; `project` absent/`null` : 422 `project_invalid`; inconnu : 422 `project_invalid` | **rupture** (voir « Impact ») |
+| `PATCH /tasks/{id}` | `project` modifiable (permis à tout état), `null` : 422 `project_invalid` (PC13, validé), clé absente : inchangé; `category` : 422 `field_unknown`; avec `status` : `status_not_alone` inchangé | **rupture** |
+| `GET /tasks`, `GET /tasks/{id}`, liens, `DELETE` | forme `Task` inchangée (`category` dérivée, `project` toujours renseigné) | compatible |
+| `GET /tasks?category=` | inchangé, filtre la catégorie dérivée | compatible |
+| `GET /tasks?project=` | valeur = nom de projet configuré (PC14 validé : casse exacte); vide ou inconnu : 422 `project_invalid`; `project[]=x` : `field_type_invalid`; combiné en ET | compatible (message changé) |
+
+Statuts : `DomainStatus` : `InvalidProject` = 422 (par classe, comme `InvalidTask`); `project_not_found` 404, `project_name_taken` 409, `project_in_use` 409 ajoutés à `BY_CODE`.
+
+### Contrat MCP (validé)
+
+- **Tranche 1** : aucun nouvel outil. `create_task` : propriétés `title`, `project` (obligatoires `["title","project"]), `due_date`, … ; **`category` retiré** des propriétés (un client qui l'envoie reçoit `field_unknown` en `isError`, octet pour octet comme REST). `update_task` : `project` (`type: "string"`, pas `null`) sans `category`. `list_tasks` : `category` (`Pro`/`Perso`, inchangé), `project`. **Énumération dynamique** : `enum` de `project` (et des filtres) construite à chaque `tools/list` à partir de `ProjectService::names()`; si la base est injoignable, le schéma est servi **sans `enum`** (erreur journalisée) afin que `initialize`, `ping` et `tools/list` restent indépendants de la base comme dans le contrat du squelette (H6). Limite connue : un client qui garde `tools/list` en cache voit une énumération périmée après création, renommage ou suppression d'un projet; si cela gêne, retirer l'`enum` et lister les noms dans la description est une évolution compatible.
+- **Tranche 2** : `list_projects` : aucun argument (`additionalProperties: false`), renvoie le tableau `Project` (même JSON que `GET /projects`), appelle `ProjectService::list()`; erreurs : `-32602` si arguments non vides, `-32603` sur incident. Outil en lecture seule (10 outils au total avec `ping`). Pas d'outil d'écriture sur les projets (PC7).
+
+### Portail (validé)
+
+- **Tranche 1** : formulaires de création/modification : champ « Catégorie » **supprimé**; liste « Projet » obligatoire (« Choisir… » puis les projets, valeur = nom), alimentée par `ProjectService::list()`; la catégorie s'affiche en lecture seule dans le détail et la liste (« selon le projet »). Filtre « Projet » dynamique, filtre « Catégorie » inchangé. `TaskForm` : `category` sort de `FIELDS`; un champ `category` forgé dans un POST est ignoré par le portail comme tout champ de formulaire inconnu (le cas d'usage reste le garde : un appel direct à `TaskService` le refuse) — écart assumé par rapport à PC11 pour le portail (H7 tranchée par l'utilisateur : ignoré, pas de 422 de formulaire; REST et MCP refusent). `project_invalid` : message du cas d'usage près du champ `f-project`. `PortalAdapter` reçoit `ProjectService` (adaptation de ses constructions dans les tests).
+- **Tranche 2 (esquisse)** : pages `/projects` (liste avec catégorie et `task_count`), `/projects/new`, `/projects/{id}/edit` (nom et catégorie; affiche le nombre de tâches concernées avant de changer la catégorie, puis `tasks_recategorized` en message), `/projects/{id}/delete` (page de confirmation comme PW5; refus 409 avec le nombre de tâches et lien vers la liste filtrée), mêmes gardes (CSRF, `Origin`, `Host`) que le portail existant, `Messages` étendu aux codes projet. Aucun cas d'usage nouveau.
+
+### Impact (analyse, validée)
+
+| Consommateur | Effet |
+|---|---|
+| **REST** | **Ruptures dans `/api/v1`** : `category` refusé en écriture; `project` obligatoire à la création; `PATCH project:null` refusé (effaçait avant). Réponses : mêmes clés. Aucune version `/api/v2` créée : décision PC11 de l'utilisateur, aucun client externe, rien déployé (H1). |
+| **MCP** | `create_task` : `category` retiré, `project` requis; enums dynamiques; clients en cache : voir ci-dessus. |
+| **Portail** | champ catégorie supprimé, projet requis, listes dynamiques. |
+| **Données** | `0004` destructive pour deux colonnes sans perte d'information après contrôle de conflits; `tasks.project_id` ajouté; `updated_at` conservé. |
+| **Code existant** | `TaskValidator` (`FIELDS`, `PROJECTS`, `validateCreate` obligation de catégorie), `TaskRepository` (jointure, `insert`, `update`, filtres, `copyAsOccurrence`), `TaskService` (résolution du projet, `changeStatus`), `DomainStatus`, `Bootstrap`, `TaskController` (aucun changement de logique), `TaskTools`, `McpAdapter`, `TaskForm`, `TaskPages`, vues `task_form`/`task_list`/`task_detail`, `Messages`. |
+| **Tests** (305 occurrences de `category`/`project` dans 14 fichiers) | à adapter : `TaskValidatorTest` (52), `McpTasksTest` (54), `RestTasksCrudTest` (44), `PortalTasksTest` (42), `ProjectConclusionsTest` (33; tests du `CHECK tasks_project_valid` à retirer ou réécrire), `TaskSchemaTest` (21; listes de migrations, `CHECK` de catégorie, `INSERT` bruts), `TaskStatusServiceTest` (15), `RestTaskStatusTest` (13), `TaskServiceTest` (12), `TaskFormTest` (8), `McpToolsTest` (7), `RestTasksTest`, `BasePathTasksTest`, `PortalTasksActionsTest`. Tout `INSERT INTO tasks (..., category ...)` brut doit fournir `project_id` : prévoir un assistant de test (résolution d'un projet par nom). Isolation : un `TRUNCATE tasks` ne vide pas `projects` (les projets de la migration persistent) ; un assistant remet `projects` à l'état de la migration (`TRUNCATE tasks, projects RESTART IDENTITY CASCADE` puis réinsertion des six lignes). |
+| **Dépendances** | aucune ajoutée. |
+
+### Tests à écrire avant le code (validé; PostgreSQL réel)
+
+1. **Schéma/migration** : `0004` sur base vide (six projets, `category`/`project` absents de `tasks`); sur base migrée à `0003` avec données (technique du test de rattrapage de `0002`) : projet `NULL` -> accueil de la catégorie, `updated_at`/état conservés, aucune tâche perdue; conflit -> `RuntimeException`, message avec nombre et liste, `projects` absente, `schema_migrations` sans `0004`; rejeu après arbitrage; rapport = ensemble refusé par la garde; rapport lecture seule (aucune écriture) et refus si déjà migré; `CHECK` nom vide/256, catégorie invalide; doublon `OPF`/`opf` : `23505` + `projects_name_lower_key`; FK : suppression d'un projet utilisé `23503`, nom `tasks_project_id_fkey`.
+2. **Validateurs (unitaires)** : `ProjectValidator` (tableau ci-dessus); `TaskValidator` : `category` -> `field_unknown`, `project` absent/`null` -> `project_invalid`, non-chaîne -> `field_type_invalid`.
+3. **Services** : projets (CRUD, renommage `opf`->`OPF` permis, doublon, suppression 409/OK, `tasks_recategorized` avec tâches terminées, catégorie inchangée = 0, `{}` sans écriture); tâches (création avec projet inconnu/vide, changement de projet y compris `done`, `null` refusé, catégorie lue suit le projet après changement de catégorie du projet, filtres `category`/`project` en ET, projet inconnu 422, terminaison : occurrence dans le même projet, `conclusions` `NULL`, aucune dépendance).
+4. **REST** : tableau des opérations projets (codes, `Location`, 405, `details`); tâches : `category` -> 422 `field_unknown`, projet obligatoire, filtres.
+5. **MCP** : `tools/list` : `enum` = noms en base et mise à jour après création d'un projet, `category` absent de `create_task`/`update_task`, dégradation sans `enum` si la base est coupée; parité des erreurs avec REST; (tranche 2) `list_projects`.
+6. **Portail** : formulaires sans catégorie, liste de projets dynamique, saisie conservée, `project_invalid`, détail avec catégorie dérivée; (tranche 2) pages de gestion, confirmation, refus 409, parité.
+
+### Découpage et ordre (validé)
+
+Tranche 1 : migration + rapport + tests de schéma; `Project*`; adaptation `Task*`; REST projets; MCP et portail (tranche 1 seulement); adaptation des tests; README/CHANGELOG. Tranche 2 : pages portail de gestion, `list_projects`. L'ordre interne de la tranche 1 suit cette liste (la migration locale ne se lance qu'après le rapport de conflits et une sauvegarde de la base locale).
+
+### Points soumis (projets configurables) — tous validés le 2026-10-15
+
+**Structurant (validés par l'utilisateur)** : (1) catégorie dérivée par suppression de `tasks.category` et jointure (option A); (2) table `projects`, unicité par index sur `lower(name)`, clé étrangère `ON DELETE RESTRICT`; (3) migration unique `0004` avec rapport en lecture seule préalable et garde dans la migration; (4) ruptures de `/api/v1` (catégorie en écriture, projet obligatoire, `PATCH project:null`) sans `/api/v2`; (5) nouveaux contrats REST des projets et nouveaux codes (`project_name_blank`, `project_name_too_long`, `project_name_taken` 409, `project_not_found` 404, `project_in_use` 409; `project_invalid` pour manquant, `null` ou inconnu); (6) validation de tâche en deux temps (forme pure, existence en service).
+**Hypothèses (H1 à H6, H8, H9 validées; H7 tranchée, voir « Portail »)** : H1 pas de `/api/v2`; H2 le changement de catégorie d'un projet ne modifie pas `updated_at` des tâches; H3 `task_count` dans `Project` et `tasks_recategorized` dans la réponse du `PATCH`; H4 `project_in_use` ne renvoie que le nombre de tâches (pas la liste); H5 chemins REST par identifiant; H6 `tools/list` sans `enum` si la base est injoignable; H7 le portail ignore un champ `category` forgé (pas de 422 de formulaire); H8 nom et sémantique de la commande `bin/report-project-conflicts`; H9 `projects` sans dates.
+**Questions produit, toutes tranchées par l'utilisateur** : noms d'accueil « Divers Pro » / « Divers Perso »; PC12 option (a), aucune règle sur les accueils; PC13 `PATCH project:null` -> 422 `project_invalid`; PC14 casse exacte (la casse insensible, écartée, aurait imposé que `update` compare le nom canonique).
+**Points ouverts restants** : aucun point de conception. À reporter au backlog par le Product Owner (non modifié ici) : noms d'accueil, PC12 à PC14 et H7 tranchés.
+**Non vérifié** : exécution de `0004` sur PostgreSQL 16/18 et sur AlwaysData, `LC_CTYPE` de la base AlwaysData, rendu du message `RAISE` côté PDO, comportement des clients MCP avec énumération périmée. `CLAUDE.md` (« Modèle initial d'une tâche ») décrit encore la catégorie comme champ de la tâche : à mettre en cohérence par l'utilisateur.
 
 ## Dépendances Composer (proposé)
 

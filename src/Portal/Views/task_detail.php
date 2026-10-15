@@ -10,9 +10,9 @@
   <h2 id="h-infos">Informations</h2>
   <dl>
     <dt>Catégorie</dt>
-    <dd><?= $e($task['category']) ?></dd>
+    <dd><?= $e($task['category']) ?> (selon le projet)</dd>
     <dt>Projet</dt>
-    <dd><?= $e($task['project'] ?? 'Aucun') ?></dd>
+    <dd><?= $e($task['project']) ?></dd>
     <dt>Date butée</dt>
     <dd><?= $e($task['due_date'] === null ? 'Aucune' : \Actions\Portal\Labels::date($task['due_date'])) ?></dd>
     <dt>Périodicité</dt>

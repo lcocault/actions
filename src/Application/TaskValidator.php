@@ -10,24 +10,25 @@ namespace Actions\Application;
  */
 final class TaskValidator
 {
-    private const FIELDS = ['title', 'category', 'due_date', 'recurrence', 'estimated_minutes', 'description', 'project', 'conclusions'];
+    private const FIELDS = ['title', 'due_date', 'recurrence', 'estimated_minutes', 'description', 'project', 'conclusions'];
     public const UNITS = ['day', 'week', 'month', 'year'];
     public const CATEGORIES = ['Pro', 'Perso'];
-    /** Liste fermée des projets (répétée dans le CHECK tasks_project_valid, migration 0003). */
-    public const PROJECTS = ['MS-HR', 'Jardin/Maison', 'OPF', 'Erendil'];
     private const INT4_MAX = 2147483647;
     private const TITLE_MAX = 255;
 
     /**
+     * `category` n'est plus un champ de tâche (dérivée du projet) : toute clé `category` est `field_unknown`.
+     * `project` est le nom du projet (forme contrôlée ici; son existence l'est par TaskService).
+     *
      * @param array<string,mixed> $data
-     * @return array{title:string,category:string,due_date:?string,recurrence:?array{interval:int,unit:string},estimated_minutes:?int,description:?string,project:?string,conclusions:?string}
+     * @return array{title:string,project:string,due_date:?string,recurrence:?array{interval:int,unit:string},estimated_minutes:?int,description:?string,conclusions:?string}
      * @throws InvalidTask
      */
     public function validateCreate(array $data): array
     {
         $this->rejectUnknownKeys($data);
         $state = [
-            'title' => null, 'category' => null, 'due_date' => null,
+            'title' => null, 'due_date' => null,
             'recurrence' => null, 'estimated_minutes' => null, 'description' => null,
             'project' => null, 'conclusions' => null,
         ];
@@ -35,8 +36,8 @@ final class TaskValidator
         if (!array_key_exists('title', $data)) {
             throw new InvalidTask('title_blank', 'title', 'Le titre est obligatoire.');
         }
-        if (!array_key_exists('category', $data)) {
-            throw new InvalidTask('category_invalid', 'category', 'La catégorie est obligatoire (Pro ou Perso).');
+        if (!array_key_exists('project', $data)) {
+            throw new InvalidTask('project_invalid', 'project', 'Le projet est obligatoire.');
         }
 
         return $this->check($state, $data);
@@ -47,7 +48,7 @@ final class TaskValidator
      *
      * @param array<string,mixed> $current état actuel (forme `Task`, au moins les six champs)
      * @param array<string,mixed> $changes
-     * @return array{title:string,category:string,due_date:?string,recurrence:?array{interval:int,unit:string},estimated_minutes:?int,description:?string,project:?string,conclusions:?string}
+     * @return array{title:string,project:string,due_date:?string,recurrence:?array{interval:int,unit:string},estimated_minutes:?int,description:?string,conclusions:?string}
      * @throws InvalidTask
      */
     public function validateUpdate(array $current, array $changes): array
@@ -78,6 +79,7 @@ final class TaskValidator
 
     /**
      * Filtres de liste : clés permises `status`, `category` et `project`, une seule valeur chacun.
+     * `project` : forme seulement (chaîne); l'existence du projet est contrôlée par TaskService.
      *
      * @param array<string,mixed> $filters
      * @return array{status?:TaskStatus,category?:string,project?:string}
@@ -98,7 +100,7 @@ final class TaskValidator
             $out['category'] = $this->category($filters['category']);
         }
         if (array_key_exists('project', $filters)) {
-            $out['project'] = $this->requiredProject($filters['project']);
+            $out['project'] = $this->projectName($filters['project']);
         }
 
         return $out;
@@ -128,7 +130,6 @@ final class TaskValidator
             $value = $changes[$field];
             $state[$field] = match ($field) {
                 'title' => $this->title($value),
-                'category' => $this->category($value),
                 'due_date' => $this->dueDate($value),
                 'recurrence' => $this->recurrence($value),
                 'estimated_minutes' => $this->estimatedMinutes($value),
@@ -254,28 +255,22 @@ final class TaskValidator
         return $value === null ? null : $this->text($value, 'description');
     }
 
-    /** `null` ou valeur exacte de PROJECTS (sensible à la casse, sans trim). */
-    private function project(mixed $value): ?string
+    /** Projet obligatoire : `null` refusé (project_invalid), non-chaîne refusée (field_type_invalid); le nom est stocké tel quel. */
+    private function project(mixed $value): string
     {
-        return $value === null ? null : $this->requiredProject($value);
+        if ($value === null) {
+            throw new InvalidTask('project_invalid', 'project', 'Le projet est obligatoire.');
+        }
+
+        return $this->projectName($value);
     }
 
-    private function requiredProject(mixed $value): string
+    private function projectName(mixed $value): string
     {
         if (!is_string($value)) {
             throw new InvalidTask('field_type_invalid', 'project', 'Type de valeur incorrect.');
         }
-        if (!in_array($value, self::PROJECTS, true)) {
-            throw new InvalidTask('project_invalid', 'project', 'Le projet doit être ' . self::projectList() . '.');
-        }
 
         return $value;
-    }
-
-    private static function projectList(): string
-    {
-        $last = self::PROJECTS[array_key_last(self::PROJECTS)];
-
-        return implode(', ', array_slice(self::PROJECTS, 0, -1)) . ' ou ' . $last;
     }
 }

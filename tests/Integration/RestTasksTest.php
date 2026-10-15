@@ -31,9 +31,7 @@ final class RestTasksTest extends DbTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->pdo->exec('DROP TABLE IF EXISTS task_dependencies, tasks, schema_migrations CASCADE');
-        $this->pdo->exec('DROP FUNCTION IF EXISTS task_dependencies_check_cycle()');
-        (new Migrator($this->pdo, __DIR__ . '/../../database/migrations'))->migrate();
+        $this->migrateFresh();
         $this->kernel = Bootstrap::kernel($this->config);
         $this->svc = Bootstrap::taskService($this->config);
     }
@@ -53,7 +51,7 @@ final class RestTasksTest extends DbTestCase
 
     private function make(string $title): int
     {
-        return $this->svc->create(['title' => $title, 'category' => 'Pro'])['id'];
+        return $this->svc->create(['title' => $title, 'project' => 'Divers Pro'])['id'];
     }
 
     private function rows(string $table): int
@@ -300,12 +298,14 @@ final class RestTasksTest extends DbTestCase
     private function kernelWith(\PDO $pdo): Kernel
     {
         $diagnostic = new Diagnostic(static fn (): \PDO => $pdo);
-        $service = new TaskService(new TaskRepository(static fn (): \PDO => $pdo));
+        $connect = static fn (): \PDO => $pdo;
+        $service = \Actions\Tests\Support\Services::tasks($connect);
+        $projects = \Actions\Tests\Support\Services::projects($connect);
 
         return new Kernel(
-            new PortalAdapter($service, new \Actions\Tests\Support\ArraySession(), ['127.0.0.1']),
-            new RestAdapter($diagnostic, new TaskController($service)),
-            new McpAdapter($diagnostic, $service, [], ['127.0.0.1']),
+            new PortalAdapter($service, $projects, new \Actions\Tests\Support\ArraySession(), ['127.0.0.1']),
+            new RestAdapter($diagnostic, new TaskController($service), new \Actions\Rest\ProjectController($projects)),
+            new McpAdapter($diagnostic, $service, $projects, [], ['127.0.0.1']),
         );
     }
 }

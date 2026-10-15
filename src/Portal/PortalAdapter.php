@@ -6,6 +6,7 @@ namespace Actions\Portal;
 
 use Actions\Application\DatabaseUnavailable;
 use Actions\Application\DomainError;
+use Actions\Application\ProjectService;
 use Actions\Application\TaskNotFound;
 use Actions\Application\TaskService;
 use Actions\Http\DomainStatus;
@@ -35,13 +36,14 @@ final class PortalAdapter
     /** @param list<string> $allowedHosts noms d'hôte en minuscules, sans port */
     public function __construct(
         TaskService $tasks,
+        ProjectService $projects,
         private readonly Session $session,
         private readonly array $allowedHosts,
         ?View $view = null,
         string $basePath = '',
     ) {
         $this->renderer = new Renderer($view ?? new View(prefix: $basePath), $session);
-        $this->pages = new TaskPages($tasks, $this->renderer);
+        $this->pages = new TaskPages($tasks, $projects, $this->renderer);
     }
 
     public function handle(Request $request): Response

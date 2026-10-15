@@ -7,6 +7,7 @@ namespace Actions\Mcp;
 use Actions\Application\DatabaseUnavailable;
 use Actions\Application\Diagnostic;
 use Actions\Application\DomainError;
+use Actions\Application\ProjectService;
 use Actions\Application\TaskService;
 use Actions\Http\DomainStatus;
 use Actions\Http\ErrorBody;
@@ -31,10 +32,11 @@ final class McpAdapter
     public function __construct(
         private readonly Diagnostic $diagnostic,
         TaskService $tasks,
+        ProjectService $projects,
         private readonly array $allowedOrigins = [],
         private readonly array $allowedHosts = [],
     ) {
-        $this->tools = new TaskTools($tasks);
+        $this->tools = new TaskTools($tasks, $projects);
     }
 
     public function handle(Request $request): Response

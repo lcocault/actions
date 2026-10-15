@@ -18,9 +18,7 @@ final class RestTaskStatusTest extends DbTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->pdo->exec('DROP TABLE IF EXISTS task_dependencies, tasks, schema_migrations CASCADE');
-        $this->pdo->exec('DROP FUNCTION IF EXISTS task_dependencies_check_cycle()');
-        (new Migrator($this->pdo, __DIR__ . '/../../database/migrations'))->migrate();
+        $this->migrateFresh();
         $this->kernel = Bootstrap::kernel($this->config);
     }
 
@@ -33,7 +31,7 @@ final class RestTaskStatusTest extends DbTestCase
     /** @param array<string,mixed> $data @return array<string,mixed> */
     private function create(array $data = []): array
     {
-        $r = $this->send('POST', '/api/v1/tasks', json_encode($data + ['title' => 't', 'category' => 'Pro'], JSON_THROW_ON_ERROR));
+        $r = $this->send('POST', '/api/v1/tasks', json_encode($data + ['title' => 't', 'project' => 'Divers Pro'], JSON_THROW_ON_ERROR));
         self::assertSame(201, $r->status, $r->body);
 
         return $this->json($r);
@@ -93,7 +91,7 @@ final class RestTaskStatusTest extends DbTestCase
     public function testPostRefusesStatusAndCompletedAt(): void
     {
         foreach (['status', 'completed_at'] as $key) {
-            $this->assertError($this->send('POST', '/api/v1/tasks', json_encode(['title' => 't', 'category' => 'Pro', $key => 'done'])), 422, 'field_unknown');
+            $this->assertError($this->send('POST', '/api/v1/tasks', json_encode(['title' => 't', 'project' => 'Divers Pro', $key => 'done'])), 422, 'field_unknown');
         }
         self::assertSame(0, (int) $this->pdo->query('SELECT count(*) FROM tasks')->fetchColumn());
     }
@@ -203,8 +201,8 @@ final class RestTaskStatusTest extends DbTestCase
     public function testListFilters(): void
     {
         $a = $this->create(['title' => 'a']);
-        $b = $this->create(['title' => 'b', 'category' => 'Perso']);
-        $c = $this->create(['title' => 'c', 'category' => 'Perso']);
+        $b = $this->create(['title' => 'b', 'project' => 'Divers Perso']);
+        $c = $this->create(['title' => 'c', 'project' => 'Divers Perso']);
         $this->force($b['id'], 'in_progress');
         $this->force($c['id'], 'done');
         $ids = fn (Response $r): array => array_column($this->json($r), 'id');

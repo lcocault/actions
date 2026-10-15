@@ -29,26 +29,14 @@
   </div>
 
   <div class="field">
-    <label for="f-category">Catégorie <span class="hint">(obligatoire)</span></label>
-    <select id="f-category" name="category" required<?php if (isset($errors['category'])): ?> aria-describedby="e-category" aria-invalid="true"<?php endif; ?>>
-      <option value=""<?= $e($values['category'] === '' ? ' selected' : '') ?>>Choisir…</option>
-<?php foreach (['Pro', 'Perso'] as $category): ?>
-      <option value="<?= $e($category) ?>"<?= $e($values['category'] === $category ? ' selected' : '') ?>><?= $e($category) ?></option>
-<?php endforeach; ?>
-    </select>
-<?php foreach ($errors['category'] ?? [] as $message): ?>
-    <p class="error" id="e-category"><?= $e($message) ?></p>
-<?php endforeach; ?>
-  </div>
-
-  <div class="field">
-    <label for="f-project">Projet</label>
-    <select id="f-project" name="project"<?php if (isset($errors['project'])): ?> aria-describedby="e-project" aria-invalid="true"<?php endif; ?>>
-      <option value=""<?= $e($values['project'] === '' ? ' selected' : '') ?>>Aucun</option>
+    <label for="f-project">Projet <span class="hint">(obligatoire)</span></label>
+    <select id="f-project" name="project" required aria-describedby="h-project<?= $e(isset($errors['project']) ? ' e-project' : '') ?>"<?php if (isset($errors['project'])): ?> aria-invalid="true"<?php endif; ?>>
+      <option value=""<?= $e($values['project'] === '' ? ' selected' : '') ?>>Choisir…</option>
 <?php foreach ($projects as $project): ?>
       <option value="<?= $e($project) ?>"<?= $e($values['project'] === $project ? ' selected' : '') ?>><?= $e($project) ?></option>
 <?php endforeach; ?>
     </select>
+    <p class="hint" id="h-project">La catégorie (Pro ou Perso) est celle du projet.</p>
 <?php foreach ($errors['project'] ?? [] as $message): ?>
     <p class="error" id="e-project"><?= $e($message) ?></p>
 <?php endforeach; ?>

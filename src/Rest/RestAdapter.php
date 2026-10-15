@@ -19,6 +19,7 @@ final class RestAdapter
     public function __construct(
         private readonly Diagnostic $diagnostic,
         private readonly TaskController $tasks,
+        private readonly ProjectController $projects,
     ) {
     }
 
@@ -78,6 +79,28 @@ final class RestAdapter
                 'GET' => $this->tasks->get($id),
                 'PATCH' => $this->tasks->update($id, $request),
                 'DELETE' => $this->tasks->delete($id),
+                default => self::methodNotAllowed('GET, PATCH, DELETE'),
+            };
+        }
+
+        if ($path === '/api/v1/projects') {
+            return match ($method) {
+                'GET' => $this->projects->list(),
+                'POST' => $this->projects->create($request),
+                default => self::methodNotAllowed('GET, POST'),
+            };
+        }
+
+        if (preg_match('#^/api/v1/projects/([^/]+)$#', $path, $m) === 1) {
+            $id = PathId::parse($m[1]);
+            if ($id === null) {
+                return self::notFound();
+            }
+
+            return match ($method) {
+                'GET' => $this->projects->get($id),
+                'PATCH' => $this->projects->update($id, $request),
+                'DELETE' => $this->projects->delete($id),
                 default => self::methodNotAllowed('GET, PATCH, DELETE'),
             };
         }
