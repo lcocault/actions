@@ -12,7 +12,7 @@ final class TaskRepository extends PdoRepository
 {
     /** La catégorie et le nom du projet viennent de la jointure `projects p` (la catégorie n'est plus stockée sur la tâche). */
     private const TASK_COLUMNS = "t.id, t.title, p.category AS category, to_char(t.due_date, 'YYYY-MM-DD') AS due_date,"
-        . ' t.recurrence_interval, t.recurrence_unit, t.estimated_minutes, t.description, p.name AS project, t.conclusions, t.status,'
+        . ' t.recurrence_interval, t.recurrence_unit, t.estimated_minutes, t.description, p.name AS project, t.conclusions, t.importance, t.status,'
         . " to_char(t.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS created_at,"
         . " to_char(t.completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS completed_at,"
         . " to_char(t.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS updated_at";
@@ -28,8 +28,8 @@ final class TaskRepository extends PdoRepository
     {
         try {
             $stmt = $this->run(
-                'INSERT INTO tasks (title, project_id, due_date, recurrence_interval, recurrence_unit, estimated_minutes, description, conclusions)'
-                . ' VALUES (:title, :project_id, :due_date, :recurrence_interval, :recurrence_unit, :estimated_minutes, :description, :conclusions)'
+                'INSERT INTO tasks (title, project_id, due_date, recurrence_interval, recurrence_unit, estimated_minutes, description, conclusions, importance)'
+                . ' VALUES (:title, :project_id, :due_date, :recurrence_interval, :recurrence_unit, :estimated_minutes, :description, :conclusions, :importance)'
                 . ' RETURNING id',
                 [
                     'title' => $task['title'],
@@ -40,6 +40,7 @@ final class TaskRepository extends PdoRepository
                     'estimated_minutes' => $task['estimated_minutes'],
                     'description' => $task['description'],
                     'conclusions' => $task['conclusions'],
+                    'importance' => $task['importance'],
                 ],
             );
         } catch (\PDOException $e) {
@@ -51,14 +52,14 @@ final class TaskRepository extends PdoRepository
 
     /**
      * Crée l'occurrence suivante d'une périodique en un `INSERT ... SELECT` depuis la ligne source (déjà verrouillée) :
-     * titre, projet (donc catégorie), durée, description et périodicité recopiés; conclusions NULL; aucune dépendance;
+     * titre, projet (donc catégorie), importance, durée, description et périodicité recopiés; conclusions NULL; aucune dépendance;
      * état par défaut. Renvoie l'id de la nouvelle tâche.
      */
     public function copyAsOccurrence(int $sourceId, string $dueDate): int
     {
         $stmt = $this->run(
-            'INSERT INTO tasks (title, project_id, due_date, recurrence_interval, recurrence_unit, estimated_minutes, description, conclusions)'
-            . ' SELECT title, project_id, CAST(:due_date AS date), recurrence_interval, recurrence_unit, estimated_minutes, description, NULL'
+            'INSERT INTO tasks (title, project_id, due_date, recurrence_interval, recurrence_unit, estimated_minutes, description, conclusions, importance)'
+            . ' SELECT title, project_id, CAST(:due_date AS date), recurrence_interval, recurrence_unit, estimated_minutes, description, NULL, importance'
             . ' FROM tasks WHERE id = :id RETURNING id',
             ['due_date' => $dueDate, 'id' => $sourceId],
         );
@@ -72,7 +73,7 @@ final class TaskRepository extends PdoRepository
 
     /**
      * Applique les champs modifiés (clés : title, due_date, recurrence, estimated_minutes, description,
-     * project_id, conclusions) et positionne updated_at.
+     * project_id, conclusions, importance) et positionne updated_at.
      *
      * @param array<string,mixed> $changes
      * @throws InvalidTask project_invalid si le projet a disparu entre sa résolution et l'écriture
@@ -90,7 +91,7 @@ final class TaskRepository extends PdoRepository
                 continue;
             }
             // Noms de colonnes issus d'une liste fermée (clés déjà validées), jamais de l'entrée.
-            if (!in_array($field, ['title', 'due_date', 'estimated_minutes', 'description', 'project_id', 'conclusions'], true)) {
+            if (!in_array($field, ['title', 'due_date', 'estimated_minutes', 'description', 'project_id', 'conclusions', 'importance'], true)) {
                 throw new \LogicException('Champ non modifiable : ' . $field);
             }
             $sets[] = $field . ' = :' . $field;
@@ -144,7 +145,7 @@ final class TaskRepository extends PdoRepository
     /**
      * Triées due_date croissante (sans date en dernier), puis id. Clauses fixes, valeurs liées.
      *
-     * @param array{status?:TaskStatus,category?:string,project_id?:int} $filters déjà validés (projet résolu en identifiant)
+     * @param array{status?:TaskStatus,category?:string,project_id?:int,importance?:string} $filters déjà validés (projet résolu en identifiant)
      * @return list<array<string,mixed>>
      */
     public function findAll(array $filters = []): array
@@ -162,6 +163,10 @@ final class TaskRepository extends PdoRepository
         if (isset($filters['project_id'])) {
             $where[] = 't.project_id = :project_id';
             $params['project_id'] = $filters['project_id'];
+        }
+        if (isset($filters['importance'])) {
+            $where[] = 't.importance = :importance';
+            $params['importance'] = $filters['importance'];
         }
         $rows = $this->run(
             'SELECT ' . self::TASK_COLUMNS . self::FROM . ($where === [] ? '' : ' WHERE ' . implode(' AND ', $where))
@@ -312,6 +317,7 @@ final class TaskRepository extends PdoRepository
             'description' => $r['description'] === null ? null : (string) $r['description'],
             'project' => (string) $r['project'],
             'conclusions' => $r['conclusions'] === null ? null : (string) $r['conclusions'],
+            'importance' => (string) $r['importance'],
             'required_actions' => $required,
             'status' => (string) $r['status'],
             'completed_at' => $r['completed_at'] === null ? null : (string) $r['completed_at'],

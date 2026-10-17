@@ -75,7 +75,7 @@ final class ProjectsMigrationTest extends DbTestCase
 
     public function testFreshDatabaseHasTheSixProjects(): void
     {
-        self::assertSame(['0001_tasks_and_dependencies', '0002_task_status', '0003_task_project_conclusions', '0004_projects'], $this->migrate());
+        self::assertSame(['0001_tasks_and_dependencies', '0002_task_status', '0003_task_project_conclusions', '0004_projects', '0005_task_importance'], $this->migrate());
         $rows = $this->pdo->query('SELECT name, category FROM projects ORDER BY id')->fetchAll(\PDO::FETCH_KEY_PAIR);
         self::assertSame([
             'MS-HR' => 'Pro', 'Jardin/Maison' => 'Perso', 'OPF' => 'Perso', 'Erendil' => 'Perso',
@@ -142,7 +142,7 @@ final class ProjectsMigrationTest extends DbTestCase
         $cols = 'id, title, description, conclusions, status, completed_at, created_at, updated_at';
         $before = $this->pdo->query("SELECT $cols FROM tasks ORDER BY id")->fetchAll();
 
-        self::assertSame(['0004_projects'], $this->migrate());
+        self::assertSame(['0004_projects', '0005_task_importance'], $this->migrate());
 
         self::assertSame($before, $this->pdo->query("SELECT $cols FROM tasks ORDER BY id")->fetchAll(), 'aucune tâche perdue ni modifiée (updated_at, état, clôture conservés)');
         $byTask = $this->pdo->query('SELECT t.id, p.name, p.category FROM tasks t JOIN projects p ON p.id = t.project_id ORDER BY t.id')->fetchAll();
@@ -151,7 +151,7 @@ final class ProjectsMigrationTest extends DbTestCase
             [$d, 'Jardin/Maison', 'Perso'], [$e, 'OPF', 'Perso'], [$f, 'Erendil', 'Perso'],
         ], array_map(static fn (array $r): array => [(int) $r['id'], $r['name'], $r['category']], $byTask));
         self::assertSame(2, (int) $this->pdo->query('SELECT count(*) FROM task_dependencies')->fetchColumn());
-        self::assertSame(['0001_tasks_and_dependencies', '0002_task_status', '0003_task_project_conclusions', '0004_projects'], (new Migrator($this->pdo, self::MIGRATIONS))->status()['applied']);
+        self::assertSame(['0001_tasks_and_dependencies', '0002_task_status', '0003_task_project_conclusions', '0004_projects', '0005_task_importance'], (new Migrator($this->pdo, self::MIGRATIONS))->status()['applied']);
     }
 
     public function testConflictStopsTheMigrationWithoutPartialStateThenReplaysAfterArbitration(): void
@@ -184,7 +184,7 @@ final class ProjectsMigrationTest extends DbTestCase
         // Arbitrage manuel, puis relance.
         $this->pdo->exec("UPDATE tasks SET category = 'Pro' WHERE id = $c1");
         $this->pdo->exec("UPDATE tasks SET project = NULL WHERE id IN ($c2, $c3)");
-        self::assertSame(['0004_projects'], $this->migrate());
+        self::assertSame(['0004_projects', '0005_task_importance'], $this->migrate());
         self::assertSame(5, (int) $this->pdo->query('SELECT count(*) FROM tasks WHERE project_id IS NOT NULL')->fetchColumn());
     }
 
@@ -244,7 +244,7 @@ final class ProjectsMigrationTest extends DbTestCase
         $this->oldTask('B', 'Perso', 'OPF');
         $this->oldTask('C', 'Perso');
         self::assertSame([], (new ProjectConflictReport($this->pdo))->build()['conflicts']);
-        self::assertSame(['0004_projects'], $this->migrate());
+        self::assertSame(['0004_projects', '0005_task_importance'], $this->migrate());
     }
 
     // --- Rapport : lecture seule, garde de schéma, ligne de commande ---

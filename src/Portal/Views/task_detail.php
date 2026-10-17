@@ -13,6 +13,8 @@
     <dd><?= $e($task['category']) ?> (selon le projet)</dd>
     <dt>Projet</dt>
     <dd><?= $e($task['project']) ?></dd>
+    <dt>Importance</dt>
+    <dd><?= $e($task['importance']) ?></dd>
     <dt>Date butée</dt>
     <dd><?= $e($task['due_date'] === null ? 'Aucune' : \Actions\Portal\Labels::date($task['due_date'])) ?></dd>
     <dt>Périodicité</dt>

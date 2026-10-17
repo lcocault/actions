@@ -7,10 +7,10 @@ namespace Actions\Tests\Integration;
 use Actions\Infrastructure\Database;
 use Actions\Infrastructure\Migrator;
 
-/** Schéma des tâches (migrations 0001 à 0004) sur base vide (actions_test), une règle par test : SQLSTATE + nom de contrainte. */
+/** Schéma des tâches (migrations 0001 à 0005) sur base vide (actions_test), une règle par test : SQLSTATE + nom de contrainte. */
 final class TaskSchemaTest extends DbTestCase
 {
-    private const ALL = ['0001_tasks_and_dependencies', '0002_task_status', '0003_task_project_conclusions', '0004_projects'];
+    private const ALL = ['0001_tasks_and_dependencies', '0002_task_status', '0003_task_project_conclusions', '0004_projects', '0005_task_importance'];
 
     /** @var list<\PDO> */
     private array $extra = [];
@@ -373,7 +373,7 @@ final class TaskSchemaTest extends DbTestCase
 
     public function testMigration0002BackfillsExistingTasksAsTodoWithoutLosingData(): void
     {
-        // Base remise à l'état « 0001 seule », avec des tâches et un lien, puis migration complète (0002 à 0004).
+        // Base remise à l'état « 0001 seule », avec des tâches et un lien, puis migration complète (0002 à 0005).
         $this->dropSchema();
         self::assertSame(['0001_tasks_and_dependencies'], $this->migrateTo('0001_tasks_and_dependencies'));
         $this->pdo->exec("INSERT INTO tasks (title, category, due_date, recurrence_interval, recurrence_unit, description)
@@ -381,7 +381,7 @@ final class TaskSchemaTest extends DbTestCase
         $this->pdo->exec('INSERT INTO task_dependencies (task_id, required_task_id) VALUES (1, 2)');
         $before = $this->pdo->query('SELECT id, title, category, due_date, recurrence_interval, recurrence_unit, description, created_at, updated_at FROM tasks ORDER BY id')->fetchAll();
 
-        self::assertSame(['0002_task_status', '0003_task_project_conclusions', '0004_projects'], (new Migrator($this->pdo, self::MIGRATIONS))->migrate());
+        self::assertSame(['0002_task_status', '0003_task_project_conclusions', '0004_projects', '0005_task_importance'], (new Migrator($this->pdo, self::MIGRATIONS))->migrate());
 
         $after = $this->pdo->query('SELECT t.id, t.title, p.category, t.due_date, t.recurrence_interval, t.recurrence_unit, t.description, t.created_at, t.updated_at FROM tasks t JOIN projects p ON p.id = t.project_id ORDER BY t.id')->fetchAll();
         self::assertSame($before, $after, 'colonnes existantes inchangées (catégorie lue par le projet d\'accueil)');

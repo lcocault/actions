@@ -43,6 +43,19 @@
   </div>
 
   <div class="field">
+    <label for="f-importance">Importance</label>
+    <select id="f-importance" name="importance" aria-describedby="h-importance<?= $e(isset($errors['importance']) ? ' e-importance' : '') ?>"<?php if (isset($errors['importance'])): ?> aria-invalid="true"<?php endif; ?>>
+<?php foreach ($importances as $importance): ?>
+      <option value="<?= $e($importance) ?>"<?= $e($values['importance'] === $importance ? ' selected' : '') ?>><?= $e($importance) ?></option>
+<?php endforeach; ?>
+    </select>
+    <p class="hint" id="h-importance">Mineure par défaut.</p>
+<?php foreach ($errors['importance'] ?? [] as $message): ?>
+    <p class="error" id="e-importance"><?= $e($message) ?></p>
+<?php endforeach; ?>
+  </div>
+
+  <div class="field">
     <label for="f-due_date">Date butée</label>
     <input type="date" id="f-due_date" name="due_date" value="<?= $e($values['due_date']) ?>"<?php if (isset($errors['due_date'])): ?> aria-describedby="e-due_date" aria-invalid="true"<?php endif; ?>>
 <?php foreach ($errors['due_date'] ?? [] as $message): ?>

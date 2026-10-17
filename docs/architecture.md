@@ -12,6 +12,8 @@ Légende des statuts : **existant** (dans le dépôt, vérifiable), **proposé**
 
 **Tranche « Projets configurables » (2026-10-15)** : décisions PC1 à PC11 validées par l'utilisateur (via le backlog); conception **validée** (2026-10-15), non implémentée, dans « Projets configurables et catégorie portée par le projet ». Lus par l'Architecte : `TaskRepository`, `TaskValidator`, `TaskService`, `TaskController`, `RestAdapter`, `DomainStatus`, `Bootstrap`, `Migrator`, `InvalidTask`, `TaskIsRequired`, `ErrorBody`, migrations `0002` et `0003`, `DbTestCase`; `TaskTools`, `TaskPages`, `TaskForm` et les vues par recherche ciblée seulement.
 
+**Tranche « Importance d'une action » (2026-10-17)** : besoin et décisions I1 à I8 **validés** par l'utilisateur (transmis par le coordinateur, voir BACKLOG); conception **validée** par l'utilisateur et **livrée** par le Developer (migration `0005` appliquée en local seulement; 745 tests OK sur PostgreSQL 17 local, rapporté par le Developer, non rejoué par l'Architecte), dans « Importance d'une action ». Lus par l'Architecte à la conception : `TaskRepository`, `TaskValidator`, `TaskService`, `TaskTools` (schémas), `TaskPages` (filtres), migrations `0002`, `0004` (en tête), `database/migrations/README.md`, assertions de tests citées par recherche ciblée. Relus à la livraison (recherche ciblée) : `0005_task_importance.sql`, `TaskValidator`, `TaskRepository`, conformes à la section.
+
 ## Décisions validées (tranche « squelette »)
 
 - **Validé** : PHP sans framework + Composer minimal (chaque dépendance justifiée).
@@ -1267,6 +1269,108 @@ Tranche 1 : migration + rapport + tests de schéma; `Project*`; adaptation `Task
 **Questions produit, toutes tranchées par l'utilisateur** : noms d'accueil « Divers Pro » / « Divers Perso »; PC12 option (a), aucune règle sur les accueils; PC13 `PATCH project:null` -> 422 `project_invalid`; PC14 casse exacte (la casse insensible, écartée, aurait imposé que `update` compare le nom canonique).
 **Points ouverts restants** : aucun point de conception. À reporter au backlog par le Product Owner (non modifié ici) : noms d'accueil, PC12 à PC14 et H7 tranchés.
 **Non vérifié** : exécution de `0004` sur PostgreSQL 16/18 et sur AlwaysData, `LC_CTYPE` de la base AlwaysData, rendu du message `RAISE` côté PDO, comportement des clients MCP avec énumération périmée. `CLAUDE.md` (« Modèle initial d'une tâche ») décrit encore la catégorie comme champ de la tâche : à mettre en cohérence par l'utilisateur.
+
+## Importance d'une action — conception **validée (2026-10-17) et livrée en local** (non appliquée sur AlwaysData)
+
+**Statuts.** Tout ce qui suit est **validé** par l'utilisateur et **existant** dans le dépôt, sans écart de conception relevé par le Developer ni à la relecture ciblée. Les mentions « (proposé) » des sous-titres et du texte ci-dessous sont historiques et valent **validé**. **Vérifié** : migration et suite de tests sur PostgreSQL 17 local. **Non vérifié** : PostgreSQL 16 et 18, AlwaysData (droit `ALTER TABLE`, pgBouncer); `0005` n'a jamais été appliquée hors local. Rappel des décisions : valeurs `Mineure` / `Majeure` / `Critique`, libellés français exacts (casse et accents) en base, REST et MCP; défaut `Mineure`; tâches existantes -> `Mineure` (I1); champ facultatif à la création, `importance: null` refusé en 422 à la modification (I2); valeur invalide -> 422 avec code dédié (I3); la nouvelle occurrence d'une périodique reprend l'importance (I4); filtre par importance en REST, MCP (`list_tasks`) et portail, tri inchangé : date butée puis `id` (I5); une seule tranche REST + MCP + portail (I6); aucune règle croisée avec dépendances ou états (I7); priorité P2 (I8). Numéro et contenu de la migration, nom `importance_invalid`, forme des contrats et organisation : validés avec la conception. Précédent suivi : `project` (tranche P), moins la liste dynamique.
+
+### Migration `0005_task_importance.sql` (validé, existant; le fichier fait foi)
+
+```sql
+-- Importance d'une tâche : Mineure (défaut), Majeure ou Critique.
+-- Additive : les tâches existantes reçoivent 'Mineure' (défaut constant, sans UPDATE).
+ALTER TABLE tasks
+  ADD COLUMN importance text NOT NULL DEFAULT 'Mineure',
+  ADD CONSTRAINT tasks_importance_valid CHECK (importance IN ('Mineure', 'Majeure', 'Critique'));
+```
+
+- **Même patron que `0002`** (colonne `NOT NULL DEFAULT` constant + `CHECK` nommé `tasks_*_valid`) et même choix de type que `category` et `status` : `text` + `CHECK`, pas de `ENUM` (une valeur de plus = une migration sur le `CHECK`). `NOT NULL` : l'absence d'importance n'existe pas (I1, I2); aucun `IS NULL OR` nécessaire.
+- **Le `DEFAULT 'Mineure'` reste dans le schéma** : il réalise I1 sans `UPDATE` et protège les `INSERT` bruts. Il est répété par `TaskValidator::DEFAULT_IMPORTANCE`; un test vérifie qu'ils concordent.
+- **Coût et verrou** : un `ADD COLUMN` avec `DEFAULT` non volatile ne réécrit pas la table (la valeur est stockée dans les métadonnées); un `ADD CONSTRAINT ... CHECK` parcourt la table sans la réécrire, sous `ACCESS EXCLUSIVE` (déduit de la page : `CHECK` n'est pas cité parmi les exceptions) — PostgreSQL 17, `sql-altertable`, page consultée le 2026-10-17. Versions 16 et 18 d'AlwaysData : **non relues**. Verrou bref et sans objet à cette échelle.
+- **Compatibilité AlwaysData** : DDL standard sur la table de l'application, aucune extension, fonction ni trigger; PostgreSQL 16 à 18 vérifié le 2026-10-10 (tableau AlwaysData). **Non vérifié** : droit `ALTER TABLE` du rôle et pgBouncer. **Aucune migration AlwaysData sans autorisation explicite**; local et test seulement.
+- **Données** : aucune perte, `updated_at` inchangé; toutes les tâches existantes (terminées comprises) valent `Mineure`.
+- **Rejouabilité, retour arrière, ordre** : celle de `bin/migrate` (rejeu = « Rien à appliquer »); pas de « down » : sauvegarde `pg_dump` avant tout usage hors local, annulation par restauration (un `DROP COLUMN` serait destructif des importances saisies, décision de l'utilisateur seulement). Appliquer `0005` **avant** le code (qui sélectionne `t.importance`); l'ancien code reste compatible avec le nouveau schéma (colonnes nommées, défaut constant).
+- **Pas d'index** : trois valeurs, quelques centaines de lignes. **Tri par importance** (hors tranche, I5) : l'ordre alphabétique du texte (`Critique` < `Majeure` < `Mineure`) n'est pas l'ordre de gravité; un tri futur passera par une expression `CASE` ou un rang ajouté par migration, sans effet sur les contrats.
+- **Alternative écartée** : rang `smallint` 1 à 3 avec correspondance de libellés dans chaque interface : tri naturel, mais contredit I3 (libellés exacts en base) et duplique la correspondance.
+
+### Couche commune (validé, existant)
+
+- **`Task`** gagne la clé `importance: "Mineure"|"Majeure"|"Critique"`, **toujours présente et jamais nulle**. Ajout de clé : compatible en `/api/v1`. Source unique de la liste : `TaskValidator::IMPORTANCES = ['Mineure','Majeure','Critique']` (ordre de gravité croissante, non contractuel), réutilisée par le validateur, les `inputSchema` MCP et la liste déroulante du portail; la base répète la liste dans le `CHECK` (duplication acceptée, comme `category`) et un test d'intégration vérifie qu'elle accepte chaque valeur et refuse les variantes.
+- **`TaskValidator`** : `FIELDS` gagne `importance` (en dernier, pour ne pas changer l'ordre d'évaluation des erreurs existantes); création : absent = `Mineure`; modification : clé absente inchangée.
+
+| Contexte | Règle | `code` |
+|---|---|---|
+| valeur | chaîne exactement égale (comparaison stricte, sensible à la casse et aux accents, sans `trim`) à l'une de `IMPORTANCES`; `''`, `mineure`, `MAJEURE`, `Critique ` refusés | `importance_invalid` (validé) |
+| `null` | refusé à la modification (I2) **et à la création** (hypothèse J1 ci-dessous) | `importance_invalid` |
+| type | valeur non chaîne et non `null` (nombre, booléen, tableau) | `field_type_invalid` (comme `project`) |
+
+  Message : « L'importance doit être Mineure, Majeure ou Critique. » construit à partir de `IMPORTANCES`; `details.field = "importance"`; statut 422 par la classe `InvalidTask` (`DomainStatus` inchangé).
+- **Filtre** : `TaskService::list` accepte `importance` (une valeur, ET avec `status`, `category`, `project`); `validateFilters` l'autorise avec la même règle (vide ou hors liste : `importance_invalid`; non-chaîne : `field_type_invalid`). Aucune résolution en base (valeur de liste fermée), donc pas de changement de `TaskService::list` hors passage du filtre. Dépôt : `t.importance = :importance` (clause fixe, valeur liée); `findAll` conserve l'ordre `due_date`, `id`.
+- **`TaskRepository`** : `TASK_COLUMNS` gagne `t.importance`; `insert` (colonne nommée, valeur explicite fournie par le validateur) et la liste fermée des colonnes modifiables de `update` gagnent `importance`. Toujours des colonnes nommées. `update` valide l'état fusionné comme aujourd'hui; un changement identique n'écrit pas.
+- **Recopie à la terminaison (I4)** : `copyAsOccurrence` ajoute `importance` à son `INSERT ... SELECT` depuis la ligne source déjà verrouillée (`importance` copiée telle quelle, comme `project_id`). L'occurrence terminée la garde; `setStatus` et la réouverture n'y touchent pas; `next_occurrence` expose la clé. Contrat d'état inchangé (`PATCH {"status": …}` seul). Changer l'importance de l'occurrence terminée après coup n'affecte pas l'occurrence suivante.
+- **Aucune règle croisée (I7)** : ni avec les dépendances (une `Critique` peut requérir une `Mineure`), ni avec l'état (modifiable sur une tâche `done`, avec mise à jour de `updated_at`), ni avec la catégorie ou le projet.
+
+### Contrat REST (validé, existant; `/api/v1`, ajouts compatibles)
+
+| Opération | Changement |
+|---|---|
+| `POST /api/v1/tasks` | corps : `importance` facultatif (absent = `Mineure`); 201 avec la tâche complète (clé `importance` de plus) |
+| `GET /api/v1/tasks/{id}`, liens, `DELETE` | réponse : clé de plus; aucun changement de requête |
+| `GET /api/v1/tasks` | clé de plus par tâche; paramètre `?importance=<valeur exacte>` (`Critique`; les accents n'existent pas dans les trois libellés, aucun encodage particulier), en ET avec `status`, `category`, `project`; absent = pas de filtre; `?importance=` vide ou hors liste (dont `critique`) : 422 `importance_invalid`, `details.field = "importance"`; `?importance[]=x` : 422 `field_type_invalid`. `TaskController::list` ajoute `importance` à sa liste blanche (autres paramètres toujours ignorés). Tri inchangé. |
+| `PATCH /api/v1/tasks/{id}` | `importance` modifiable; `null` : 422 `importance_invalid`; clé absente : inchangé; avec `status` : `status_not_alone` (inchangé); `next_occurrence` porte l'importance recopiée |
+
+Erreur ajoutée : `importance_invalid` (422, famille `InvalidTask`). Aucun code existant modifié. Avant la tranche, `importance` était refusé en `field_unknown` : changement de comportement voulu (ajout de fonctionnalité).
+
+### Contrat MCP (validé, existant)
+
+Aucun nouvel outil; `TaskTools::call` inchangé (arguments transmis à `TaskService`). `inputSchema` strict (`additionalProperties: false`) :
+
+| Outil | Ajout |
+|---|---|
+| `create_task`, `update_task` | `importance` : `{"type":"string","enum":["Mineure","Majeure","Critique"],"description":"Importance de la tâche (Mineure par défaut à la création); ne peut pas être effacée."}` — **sans `null`** (refusé, comme `project`); non obligatoire; énumération produite depuis `TaskValidator::IMPORTANCES` (statique, indépendante de la base) |
+| `list_tasks` | `importance` : même énumération, « Filtre exact sur l'importance »; description de l'outil complétée (« ou par importance ») |
+| `get_task`, liens, `change_task_status`, `delete_task` | schéma inchangé; la tâche renvoyée porte `importance`; `next_occurrence` aussi |
+
+Erreurs : même JSON que REST (`isError: true`), octet pour octet. `update_task` continue de refuser `status` en `field_unknown`. Risque connu : un client qui garde `tools/list` en cache n'offre pas le nouveau champ jusqu'au rafraîchissement; un client qui l'envoie quand même à un serveur plus ancien reçoit `field_unknown`.
+
+### Portail (validé, existant)
+
+Cas d'usage appelés : `TaskService::create`, `update`, `get`, `list` (aucun nouveau); aucune règle dans l'adaptateur.
+- **`TaskForm`** : `FIELDS` gagne `importance`; `toInput` l'envoie toujours, **sans** conversion « vide -> `null` » (une valeur vide forgée donne `importance_invalid`, pas un effacement); `valuesFromForm`/`valuesFromTask`/`emptyValues` suivent (valeur initiale de création : `Mineure`).
+- **Formulaires de création et de modification** : liste déroulante « Importance » sans option vide (`Mineure`, `Majeure`, `Critique`, valeurs de `IMPORTANCES`), sélection initiale `Mineure` à la création, valeur courante à la modification; erreur rattachée au champ (`f-importance`, `aria-describedby`/`aria-invalid`, même schéma que `project`). `TaskPages::FORM_FIELD` et `ANCHOR` gagnent `importance`; `Messages` : le message de l'exception est utilisé.
+- **Détail** : ligne « Importance ». **Liste** : colonne « Importance » en texte (l'information ne repose pas sur la couleur seule). **Filtre** : liste « Importance » (« Toutes » = filtre absent) dans le formulaire GET, `name="importance"`; `TaskPages::list` l'ajoute à la boucle des filtres, valeur forgée hors liste : page « Filtre invalide » 422 existante; « Filtres actifs » et `isFiltered` en tiennent compte; ET avec état, catégorie, projet et `hide_done`.
+- Page `/reopen`, message de terminaison : inchangés (la prochaine occurrence affichée vient du cas d'usage).
+
+### Impact (analyse)
+
+| Consommateur | Effet |
+|---|---|
+| **Données** | `tasks.importance` ajoutée, toutes les lignes à `Mineure`; aucune perte; rien d'appliqué hors local. |
+| **REST** | réponses enrichies d'une clé; requêtes existantes valides; nouveau paramètre et nouveau champ facultatifs; nouveau code 422. Aucune rupture. |
+| **MCP** | schémas enrichis (facultatif); aucun outil ajouté; cache `tools/list` : voir ci-dessus. |
+| **Portail** | nouveau champ avec défaut, colonne et filtre; aucun contrat de page rompu. |
+| **Code touché** | `TaskValidator`, `TaskRepository` (`TASK_COLUMNS`, `insert`, `update`, `findAll`, `copyAsOccurrence`), `TaskService` (docblock de la forme `Task`, passage du filtre), `TaskController` (liste blanche), `TaskTools` (schémas), `TaskForm`, `TaskPages`, vues `task_form`/`task_list`/`task_detail`. Inchangés : `DomainStatus`, `PathId`, `Bootstrap`, `Migrator`, gardes du portail, dépendances Composer (aucune ajoutée). |
+| **Tests existants à adapter** (conséquences attendues, pas des régressions) | `TaskSchemaTest` (`ALL` et la liste migrée à la ligne 384 : ajouter `0005`), `ProjectsMigrationTest` (listes de migrations appliquées aux lignes 78 et 154); `TaskFormTest` (clés et ordre exacts de `toInput`/`valuesFromForm`, lignes 15, 46, 52); `TaskStatusServiceTest` (comparaison de l'occurrence, ligne 283 : ajouter `importance`); `McpTasksTest` (boucle des champs de `get_task`, ligne 139) et `McpToolsTest` (schémas); tests REST comparant une tâche complète. À relire test par test par le Developer. |
+| **Sécurité** | validation serveur par liste fermée; filtre et écriture par requêtes paramétrées, colonnes en liste fermée; la valeur n'est jamais interpolée en SQL; échappement des gabarits du portail inchangé; aucune donnée sensible; les erreurs n'exposent que code, message et `details.field`. |
+
+### Tests (validé, livrés : 745 tests OK en local; PostgreSQL réel)
+
+1. **Schéma** (`TaskSchemaTest`) : `0005` sur base vide; liste appliquée à jour; rejeu sans effet; tâches créées avant `0005` (technique du test de rattrapage de `0002`) conservées avec `importance = 'Mineure'` et `updated_at` inchangé; la base accepte les trois valeurs, refuse `NULL` (`23502`), `''`, `mineure`, `MAJEURE`, `Autre` (`23514`, nom `tasks_importance_valid` dans le message); `TaskValidator::IMPORTANCES` = valeurs acceptées par le `CHECK`; `DEFAULT_IMPORTANCE` = défaut de la colonne.
+2. **Validateur** (unitaire) : chaque valeur acceptée; création sans la clé = `Mineure`; création avec `null`, `''`, variantes de casse, `'Majeure '` : `importance_invalid`; modification avec `null` : `importance_invalid`; nombre, booléen, tableau : `field_type_invalid`; clé absente à la modification : inchangé; filtre valide, vide, hors liste, non chaîne.
+3. **Service** : création sans/avec importance; `update` pose, change, laisse inchangé si absent, `null` refusé et tâche inchangée; changement identique sans écriture (`updated_at` stable); modification sur une tâche `done`; filtre seul et en ET avec `status`/`category`/`project`; tri inchangé (date butée puis `id`, importance sans effet); terminaison d'une périodique : l'occurrence a la même importance, y compris `Critique` (et `Majeure`), l'occurrence terminée la garde, `next_occurrence` l'expose; terminaison d'une non périodique : rien créé; réouverture : importance conservée; `status` avec `importance` : `status_not_alone`; `Critique` requérant une `Mineure` et inversement acceptés (I7).
+4. **REST** : `POST`/`PATCH`/`GET` avec et sans le champ; 422 `importance_invalid` avec `details.field` (valeur inconnue, `null` en `PATCH`, `null` en `POST`), `field_type_invalid`; `GET ?importance=Critique` exact, ET avec les autres filtres, `?importance=` vide, `?importance=critique`, `?importance[]=x` : 422; paramètre inconnu toujours ignoré; terminaison par `PATCH` avec importance recopiée.
+5. **MCP** : `tools/list` : `create_task` et `update_task` déclarent `importance` (énumération = `IMPORTANCES`, sans `null`, non obligatoire), `list_tasks` aussi; `change_task_status` inchangé; parité d'erreurs avec REST (même JSON); filtre exact via `list_tasks`; recopie à la terminaison.
+6. **Portail** : formulaires avec liste sans option vide et `Mineure` sélectionnée à la création; valeur courante à la modification; valeur forgée hors liste ou vide : 422 avec message près du champ et saisie conservée; détail et colonne de liste; filtre exact en ET (état, catégorie, projet, `hide_done`), « Toutes », valeur forgée 422; recopie visible sur la nouvelle occurrence; parité de validation avec REST.
+7. Suite complète rejouée par le Developer (`vendor/bin/phpunit`), smoke HTTP réel (REST, MCP, portail), README et CHANGELOG; vérification en navigateur du formulaire laissée à l'utilisateur ou au Developer.
+
+### Points validés (importance)
+
+Statut : points ci-dessous **validés** avec la conception (J1 à J5 inclus, aucun écart signalé à la livraison).
+
+**Structurant (contrat modifié, schéma)** : (1) migration `0005` (colonne `importance text NOT NULL DEFAULT 'Mineure'`, `CHECK tasks_importance_valid`, pas d'index) — local et test seulement; (2) clé `importance` ajoutée à la forme `Task` des trois interfaces; (3) contrats modifiés : champ `importance` de `POST`/`PATCH`, paramètre `?importance=` de `GET /tasks`, schémas MCP de `create_task`, `update_task`, `list_tasks`; (4) nouveau code d'erreur `importance_invalid` (422); (5) recopie par `copyAsOccurrence`.
+**Hypothèses à confirmer** : J1 — `importance: null` explicite à la **création** : refusé (422), comme à la modification, et non traité comme absent (cohérent avec `title`/`project`; la décision I2 ne vise que la modification); J2 — `?importance=` vide refusé en REST (comme `category`/`project`) alors que le portail le traduit en « Toutes »; J3 — le portail ne propose pas d'option vide pour l'importance (la valeur par défaut est `Mineure`); J4 — nom `importance_invalid`; J5 — numéro `0005`.
+**Question produit** : aucune ouverte. Le tri ou le regroupement par importance restent hors tranche (I5).
+**Vérifié** : `0005` et tests sur PostgreSQL 17 local (rapporté par le Developer). **Non vérifié** : `0005` sur PostgreSQL 16 et 18 et sur AlwaysData (droit `ALTER TABLE`, pgBouncer; jamais migré hors local); rendu navigateur (sauf mention contraire du Developer); comportement des clients MCP avec `tools/list` en cache.
 
 ## Dépendances Composer (proposé)
 

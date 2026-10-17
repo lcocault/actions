@@ -278,9 +278,9 @@ final class TaskStatusServiceTest extends DbTestCase
         self::assertNotSame($id, $next['id']);
         self::assertSame(
             ['title' => 'Loyer', 'category' => 'Perso', 'due_date' => '2026-02-28', 'recurrence' => ['interval' => 1, 'unit' => 'month'],
-                'estimated_minutes' => 15, 'description' => 'virement', 'project' => 'Divers Perso', 'conclusions' => null,
+                'estimated_minutes' => 15, 'description' => 'virement', 'project' => 'Divers Perso', 'conclusions' => null, 'importance' => 'Mineure',
                 'required_actions' => [], 'status' => 'todo', 'completed_at' => null],
-            array_intersect_key($next, array_flip(['title', 'category', 'due_date', 'recurrence', 'estimated_minutes', 'description', 'project', 'conclusions', 'required_actions', 'status', 'completed_at'])),
+            array_intersect_key($next, array_flip(['title', 'category', 'due_date', 'recurrence', 'estimated_minutes', 'description', 'project', 'conclusions', 'importance', 'required_actions', 'status', 'completed_at'])),
         );
         self::assertSame(3, $this->taskCount());
         self::assertSame(1, $this->links(), 'aucun lien copié : le lien reste sur l\'ancienne occurrence');

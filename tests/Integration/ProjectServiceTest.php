@@ -274,7 +274,7 @@ final class ProjectServiceTest extends DbTestCase
         // La base arbitre : écrire un projet disparu (course) donne project_invalid, tâche non écrite.
         $repo = new TaskRepository(fn (): \PDO => $this->pdo);
         $task = $this->tasks->create(['title' => 'a', 'project' => 'OPF']);
-        $data = ['title' => 'x', 'due_date' => null, 'recurrence' => null, 'estimated_minutes' => null, 'description' => null, 'conclusions' => null];
+        $data = ['title' => 'x', 'due_date' => null, 'recurrence' => null, 'estimated_minutes' => null, 'description' => null, 'conclusions' => null, 'importance' => 'Mineure'];
         $this->refused(InvalidTask::class, 'project_invalid', fn () => $repo->insert($data, 999999));
         $this->refused(InvalidTask::class, 'project_invalid', fn () => $repo->update($task['id'], ['project_id' => 999999]));
         self::assertSame('OPF', $this->tasks->get($task['id'])['project']);

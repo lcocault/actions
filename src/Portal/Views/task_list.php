@@ -28,6 +28,15 @@
 <?php endforeach; ?>
     </select>
   </div>
+  <div class="field">
+    <label for="f-importance">Importance</label>
+    <select id="f-importance" name="importance">
+      <option value="">Toutes</option>
+<?php foreach ($importances as $importance): ?>
+      <option value="<?= $e($importance) ?>"<?= $e($filters['importance'] === $importance ? ' selected' : '') ?>><?= $e($importance) ?></option>
+<?php endforeach; ?>
+    </select>
+  </div>
   <div class="field check">
     <input type="checkbox" id="f-hide-done" name="hide_done" value="1"<?= $e($filters['hide_done'] ? ' checked' : '') ?>>
     <label for="f-hide-done">Masquer les tâches terminées</label>
@@ -44,7 +53,8 @@
 <p class="filter-summary">Filtres actifs :
   état <strong><?= $e($filters['status'] === '' ? 'tous' : \Actions\Portal\Labels::status($filters['status'])) ?></strong>,
   catégorie <strong><?= $e($filters['category'] === '' ? 'toutes' : $filters['category']) ?></strong>,
-  projet <strong><?= $e($filters['project'] === '' ? 'tous' : $filters['project']) ?></strong><?= $e($filters['hide_done'] ? ', tâches terminées masquées' : '') ?>.</p>
+  projet <strong><?= $e($filters['project'] === '' ? 'tous' : $filters['project']) ?></strong>,
+  importance <strong><?= $e($filters['importance'] === '' ? 'toutes' : $filters['importance']) ?></strong><?= $e($filters['hide_done'] ? ', tâches terminées masquées' : '') ?>.</p>
 <?php endif; ?>
 
 <?php if ($tasks === []): ?>
@@ -57,6 +67,7 @@
       <th scope="col">Titre</th>
       <th scope="col">Catégorie (selon le projet)</th>
       <th scope="col">Projet</th>
+      <th scope="col">Importance</th>
       <th scope="col">État</th>
       <th scope="col">Date butée</th>
       <th scope="col">Périodicité</th>
@@ -68,6 +79,7 @@
       <td><a href="<?= $url('/tasks/' . $task['id']) ?>"><?= $e($task['title']) ?></a></td>
       <td><?= $e($task['category']) ?></td>
       <td><?= $e($task['project']) ?></td>
+      <td><?= $e($task['importance']) ?></td>
       <td><span class="status status-<?= $e($task['status']) ?>"><?= $e(\Actions\Portal\Labels::status($task['status'])) ?></span></td>
       <td><?= $e(\Actions\Portal\Labels::date($task['due_date'])) ?></td>
       <td><?= $e(\Actions\Portal\Labels::recurrence($task['recurrence'])) ?></td>

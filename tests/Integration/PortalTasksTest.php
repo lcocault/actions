@@ -49,6 +49,7 @@ final class PortalTasksTest extends DbTestCase
         if ($withToken) {
             $form += ['_csrf' => $this->session->csrfToken()];
         }
+        $form += ['importance' => 'Mineure']; // le navigateur envoie toujours la liste; l'absence du champ est testée dans TaskImportanceTest
 
         return $this->kernel->handle(new Request('POST', $path, ['host' => self::HOST] + $headers, '', [], $form));
     }
@@ -294,7 +295,7 @@ final class PortalTasksTest extends DbTestCase
     /** @return array<string,array{array<string,string>,string,string}> saisie, code attendu, champ (suffixe d'id) */
     public static function invalidForms(): array
     {
-        $ok = ['title' => 'T', 'project' => 'Divers Pro', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => ''];
+        $ok = ['title' => 'T', 'project' => 'Divers Pro', 'importance' => 'Mineure', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => ''];
 
         return [
             'titre vide' => [['title' => ''] + $ok, 'title_blank', 'title'],

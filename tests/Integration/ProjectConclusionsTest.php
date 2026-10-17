@@ -75,7 +75,7 @@ final class ProjectConclusionsTest extends DbTestCase
     /** @param array<string,mixed> $form */
     private function portalPost(string $path, array $form): Response
     {
-        $form += ['_csrf' => $this->session->csrfToken()];
+        $form += ['_csrf' => $this->session->csrfToken(), 'importance' => 'Mineure'];
 
         return $this->kernel->handle(new Request('POST', $path, ['host' => self::HOST], '', [], $form));
     }

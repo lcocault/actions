@@ -140,6 +140,7 @@ final class McpTasksTest extends DbTestCase
             self::assertNull($min[$f], $f);
         }
         self::assertSame('Divers Pro', $min['project']);
+        self::assertSame('Mineure', $min['importance'], 'importance par défaut');
         self::assertSame('Pro', $min['category'], 'catégorie dérivée du projet');
         self::assertSame([], $min['required_actions']);
         self::assertSame('todo', $min['status']);

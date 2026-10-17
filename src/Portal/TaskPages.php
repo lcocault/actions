@@ -11,6 +11,7 @@ use Actions\Application\TaskIsRequired;
 use Actions\Application\TaskNotFound;
 use Actions\Application\TaskService;
 use Actions\Application\TaskStatus;
+use Actions\Application\TaskValidator;
 use Actions\Http\DomainStatus;
 use Actions\Http\PathId;
 use Actions\Http\Request;
@@ -31,6 +32,7 @@ final class TaskPages
         'description' => 'description',
         'project' => 'project',
         'conclusions' => 'conclusions',
+        'importance' => 'importance',
         'recurrence' => 'recurrence',
         'recurrence.interval' => 'recurrence',
         'recurrence.unit' => 'recurrence',
@@ -43,6 +45,7 @@ final class TaskPages
         'description' => 'f-description',
         'project' => 'f-project',
         'conclusions' => 'f-conclusions',
+        'importance' => 'f-importance',
         'recurrence' => 'f-recurrence_interval',
     ];
 
@@ -55,9 +58,9 @@ final class TaskPages
 
     public function list(Request $request): Response
     {
-        $filters = ['status' => '', 'category' => '', 'project' => '', 'hide_done' => ($request->query['hide_done'] ?? '') === '1'];
+        $filters = ['status' => '', 'category' => '', 'project' => '', 'importance' => '', 'hide_done' => ($request->query['hide_done'] ?? '') === '1'];
         $criteria = [];
-        foreach (['status', 'category', 'project'] as $name) {
+        foreach (['status', 'category', 'project', 'importance'] as $name) {
             $value = $request->query[$name] ?? '';
             if ($value === '') { // « Tous » : filtre absent (REST, lui, refuse la valeur vide)
                 continue;
@@ -78,8 +81,9 @@ final class TaskPages
             'tasks' => $tasks,
             'filters' => $filters,
             'statuses' => Labels::statuses(),
-            'isFiltered' => $filters['status'] !== '' || $filters['category'] !== '' || $filters['project'] !== '' || $filters['hide_done'],
+            'isFiltered' => $filters['status'] !== '' || $filters['category'] !== '' || $filters['project'] !== '' || $filters['importance'] !== '' || $filters['hide_done'],
             'projects' => $this->projects->names(),
+            'importances' => TaskValidator::IMPORTANCES,
         ]);
     }
 
@@ -317,6 +321,7 @@ final class TaskPages
             'errors' => $errors,
             'units' => Labels::formUnits(),
             'projects' => $this->projects->names(),
+            'importances' => TaskValidator::IMPORTANCES,
             'csrf' => $this->renderer->csrf(),
         ]);
     }

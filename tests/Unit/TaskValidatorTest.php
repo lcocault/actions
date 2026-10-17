@@ -38,7 +38,7 @@ final class TaskValidatorTest extends TestCase
         self::assertSame([
             'title' => 'Payer', 'due_date' => null,
             'recurrence' => null, 'estimated_minutes' => null, 'description' => null,
-            'project' => 'OPF', 'conclusions' => null,
+            'project' => 'OPF', 'conclusions' => null, 'importance' => 'Mineure',
         ], $this->create(['title' => 'Payer']));
     }
 
@@ -221,7 +221,7 @@ final class TaskValidatorTest extends TestCase
         return [
             'title' => 'a', 'due_date' => '2026-10-11',
             'recurrence' => ['interval' => 1, 'unit' => 'day'], 'estimated_minutes' => 5, 'description' => 'd',
-            'project' => 'OPF', 'conclusions' => 'c',
+            'project' => 'OPF', 'conclusions' => 'c', 'importance' => 'Majeure',
         ];
     }
 
@@ -307,5 +307,51 @@ final class TaskValidatorTest extends TestCase
         }
         $this->assertRefused('category_invalid', fn () => $v->validateFilters(['category' => 'Autre']), 'category');
         $this->assertRefused('field_unknown', fn () => $v->validateFilters(['conclusions' => 'x']), 'conclusions');
+    }
+
+    public function testImportanceAcceptsTheThreeValuesAndDefaultsToMineure(): void
+    {
+        $v = new TaskValidator();
+        self::assertSame(['Mineure', 'Majeure', 'Critique'], TaskValidator::IMPORTANCES);
+        self::assertSame('Mineure', TaskValidator::DEFAULT_IMPORTANCE);
+        foreach (TaskValidator::IMPORTANCES as $value) {
+            self::assertSame($value, $this->create(['title' => 't', 'importance' => $value])['importance']);
+            self::assertSame($value, $v->validateUpdate($this->current(), ['importance' => $value])['importance']);
+        }
+        self::assertSame('Mineure', $this->create(['title' => 't'])['importance'], 'création sans la clé');
+        self::assertSame('Majeure', $v->validateUpdate($this->current(), ['title' => 'x'])['importance'], 'clé absente : inchangée');
+    }
+
+    public function testImportanceRefusesOtherValuesNullAndWrongTypes(): void
+    {
+        $v = new TaskValidator();
+        foreach (['', 'mineure', 'MAJEURE', 'critique', 'Critique ', ' Mineure', 'Majeur', 'Autre'] as $value) {
+            $this->assertRefused('importance_invalid', fn () => $this->create(['title' => 't', 'importance' => $value]), 'importance');
+            $this->assertRefused('importance_invalid', fn () => $v->validateUpdate($this->current(), ['importance' => $value]), 'importance');
+        }
+        $this->assertRefused('importance_invalid', fn () => $this->create(['title' => 't', 'importance' => null]), 'importance');
+        $this->assertRefused('importance_invalid', fn () => $v->validateUpdate($this->current(), ['importance' => null]), 'importance');
+        foreach ([1, 1.5, true, ['Majeure']] as $value) {
+            $this->assertRefused('field_type_invalid', fn () => $this->create(['title' => 't', 'importance' => $value]), 'importance');
+            $this->assertRefused('field_type_invalid', fn () => $v->validateUpdate($this->current(), ['importance' => $value]), 'importance');
+        }
+        try {
+            $this->create(['title' => 't', 'importance' => 'x']);
+        } catch (InvalidTask $e) {
+            self::assertSame("L'importance doit être Mineure, Majeure ou Critique.", $e->getMessage());
+        }
+    }
+
+    public function testImportanceFilter(): void
+    {
+        $v = new TaskValidator();
+        self::assertSame(['importance' => 'Critique'], $v->validateFilters(['importance' => 'Critique']));
+        self::assertSame(['category' => 'Pro', 'importance' => 'Mineure'], $v->validateFilters(['category' => 'Pro', 'importance' => 'Mineure']));
+        foreach (['', 'critique', 'Autre'] as $value) {
+            $this->assertRefused('importance_invalid', fn () => $v->validateFilters(['importance' => $value]), 'importance');
+        }
+        foreach ([null, 3, ['Critique']] as $value) {
+            $this->assertRefused('field_type_invalid', fn () => $v->validateFilters(['importance' => $value]), 'importance');
+        }
     }
 }

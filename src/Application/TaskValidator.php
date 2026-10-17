@@ -10,9 +10,13 @@ namespace Actions\Application;
  */
 final class TaskValidator
 {
-    private const FIELDS = ['title', 'due_date', 'recurrence', 'estimated_minutes', 'description', 'project', 'conclusions'];
+    private const FIELDS = ['title', 'due_date', 'recurrence', 'estimated_minutes', 'description', 'project', 'conclusions', 'importance'];
     public const UNITS = ['day', 'week', 'month', 'year'];
     public const CATEGORIES = ['Pro', 'Perso'];
+    /** Libellés exacts (ordre de gravité croissante, non contractuel); la base répète la liste dans le CHECK tasks_importance_valid. */
+    public const IMPORTANCES = ['Mineure', 'Majeure', 'Critique'];
+    /** Répète le DEFAULT de tasks.importance (un test vérifie la concordance). */
+    public const DEFAULT_IMPORTANCE = 'Mineure';
     private const INT4_MAX = 2147483647;
     private const TITLE_MAX = 255;
 
@@ -21,7 +25,7 @@ final class TaskValidator
      * `project` est le nom du projet (forme contrôlée ici; son existence l'est par TaskService).
      *
      * @param array<string,mixed> $data
-     * @return array{title:string,project:string,due_date:?string,recurrence:?array{interval:int,unit:string},estimated_minutes:?int,description:?string,conclusions:?string}
+     * @return array{title:string,project:string,due_date:?string,recurrence:?array{interval:int,unit:string},estimated_minutes:?int,description:?string,conclusions:?string,importance:string}
      * @throws InvalidTask
      */
     public function validateCreate(array $data): array
@@ -30,7 +34,7 @@ final class TaskValidator
         $state = [
             'title' => null, 'due_date' => null,
             'recurrence' => null, 'estimated_minutes' => null, 'description' => null,
-            'project' => null, 'conclusions' => null,
+            'project' => null, 'conclusions' => null, 'importance' => self::DEFAULT_IMPORTANCE,
         ];
         // Obligatoires : une valeur absente est traitée comme une valeur invalide du champ.
         if (!array_key_exists('title', $data)) {
@@ -48,7 +52,7 @@ final class TaskValidator
      *
      * @param array<string,mixed> $current état actuel (forme `Task`, au moins les six champs)
      * @param array<string,mixed> $changes
-     * @return array{title:string,project:string,due_date:?string,recurrence:?array{interval:int,unit:string},estimated_minutes:?int,description:?string,conclusions:?string}
+     * @return array{title:string,project:string,due_date:?string,recurrence:?array{interval:int,unit:string},estimated_minutes:?int,description:?string,conclusions:?string,importance:string}
      * @throws InvalidTask
      */
     public function validateUpdate(array $current, array $changes): array
@@ -78,17 +82,17 @@ final class TaskValidator
     }
 
     /**
-     * Filtres de liste : clés permises `status`, `category` et `project`, une seule valeur chacun.
+     * Filtres de liste : clés permises `status`, `category`, `project` et `importance`, une seule valeur chacun.
      * `project` : forme seulement (chaîne); l'existence du projet est contrôlée par TaskService.
      *
      * @param array<string,mixed> $filters
-     * @return array{status?:TaskStatus,category?:string,project?:string}
+     * @return array{status?:TaskStatus,category?:string,project?:string,importance?:string}
      * @throws InvalidTask
      */
     public function validateFilters(array $filters): array
     {
         foreach (array_keys($filters) as $key) {
-            if ($key !== 'status' && $key !== 'category' && $key !== 'project') {
+            if ($key !== 'status' && $key !== 'category' && $key !== 'project' && $key !== 'importance') {
                 throw new InvalidTask('field_unknown', (string) $key, 'Filtre inconnu.');
             }
         }
@@ -101,6 +105,12 @@ final class TaskValidator
         }
         if (array_key_exists('project', $filters)) {
             $out['project'] = $this->projectName($filters['project']);
+        }
+        if (array_key_exists('importance', $filters)) {
+            if (!is_string($filters['importance'])) {
+                throw new InvalidTask('field_type_invalid', 'importance', 'Type de valeur incorrect.');
+            }
+            $out['importance'] = $this->importance($filters['importance']);
         }
 
         return $out;
@@ -136,6 +146,7 @@ final class TaskValidator
                 'description' => $this->description($value),
                 'project' => $this->project($value),
                 'conclusions' => $value === null ? null : $this->text($value, 'conclusions'),
+                'importance' => $this->importance($value),
             };
         }
         if ($state['recurrence'] !== null && $state['due_date'] === null) {
@@ -272,5 +283,26 @@ final class TaskValidator
         }
 
         return $value;
+    }
+
+    /** Comparaison stricte (casse, accents, sans trim); `null` refusé, comme `project`. */
+    private function importance(mixed $value): string
+    {
+        if ($value === null) {
+            return $this->invalidImportance();
+        }
+        if (!is_string($value)) {
+            throw new InvalidTask('field_type_invalid', 'importance', 'Type de valeur incorrect.');
+        }
+        if (!in_array($value, self::IMPORTANCES, true)) {
+            return $this->invalidImportance();
+        }
+
+        return $value;
+    }
+
+    private function invalidImportance(): never
+    {
+        throw new InvalidTask('importance_invalid', 'importance', 'L\'importance doit être ' . implode(', ', array_slice(self::IMPORTANCES, 0, -1)) . ' ou ' . self::IMPORTANCES[count(self::IMPORTANCES) - 1] . '.');
     }
 }

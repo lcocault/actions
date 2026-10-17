@@ -44,7 +44,7 @@ final class BasePathTasksTest extends DbTestCase
     public function testPortalCreateRedirectsAndPagesAreLinkedUnderPrefix(): void
     {
         $host = ['host' => '127.0.0.1:8080'];
-        $form = ['_csrf' => $this->session->csrfToken(), 'title' => 'Portail', 'project' => 'Divers Perso'];
+        $form = ['_csrf' => $this->session->csrfToken(), 'title' => 'Portail', 'project' => 'Divers Perso', 'importance' => 'Mineure'];
         $r = $this->kernel->handle(new Request('POST', '/actions/tasks', $host, '', [], $form));
         self::assertSame(303, $r->status);
         self::assertMatchesRegularExpression('#^/actions/tasks/\d+$#', $r->headers['Location']);

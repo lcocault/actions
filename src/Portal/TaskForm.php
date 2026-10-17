@@ -4,16 +4,18 @@ declare(strict_types=1);
 
 namespace Actions\Portal;
 
+use Actions\Application\TaskValidator;
+
 /**
  * Formulaire de tâche <-> tableau pour TaskService. Traduction de transport seulement :
  * chaîne vide -> null, chaîne de chiffres -> entier; aucune règle (le cas d'usage valide et refuse).
  */
 final class TaskForm
 {
-    public const FIELDS = ['title', 'due_date', 'recurrence_interval', 'recurrence_unit', 'estimated_minutes', 'description', 'project', 'conclusions'];
+    public const FIELDS = ['title', 'due_date', 'recurrence_interval', 'recurrence_unit', 'estimated_minutes', 'description', 'project', 'conclusions', 'importance'];
 
     /**
-     * Les sept champs de TaskService, toujours tous présents (un champ vidé efface la valeur). Un champ `category`
+     * Les huit champs de TaskService, toujours tous présents (un champ facultatif vidé efface la valeur; `importance` est transmise telle quelle, sans conversion vide -> null : une valeur vide est refusée par le cas d'usage). Un champ `category`
      * forgé dans le POST est ignoré comme tout champ de formulaire inconnu (la catégorie découle du projet).
      *
      * @param array<string,mixed> $form
@@ -32,6 +34,7 @@ final class TaskForm
             'description' => self::nullIfEmpty($form['description'] ?? null),
             'project' => self::nullIfEmpty($form['project'] ?? null),
             'conclusions' => self::nullIfEmpty($form['conclusions'] ?? null),
+            'importance' => $form['importance'] ?? '',
         ];
     }
 
@@ -66,13 +69,14 @@ final class TaskForm
             'description' => $task['description'] ?? '',
             'project' => $task['project'] ?? '',
             'conclusions' => $task['conclusions'] ?? '',
+            'importance' => $task['importance'],
         ];
     }
 
     /** @return array<string,string> */
     public static function emptyValues(): array
     {
-        return array_fill_keys(self::FIELDS, '');
+        return array_merge(array_fill_keys(self::FIELDS, ''), ['importance' => TaskValidator::DEFAULT_IMPORTANCE]);
     }
 
     private static function nullIfEmpty(mixed $value): mixed

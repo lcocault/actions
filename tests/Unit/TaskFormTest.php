@@ -11,8 +11,8 @@ final class TaskFormTest extends TestCase
 {
     public function testEmptyFieldsBecomeNull(): void
     {
-        $in = TaskForm::toInput(['title' => 'T', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => '', 'project' => '', 'conclusions' => '']);
-        self::assertSame(['title' => 'T', 'due_date' => null, 'recurrence' => null, 'estimated_minutes' => null, 'description' => null, 'project' => null, 'conclusions' => null], $in);
+        $in = TaskForm::toInput(['title' => 'T', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => '', 'project' => '', 'conclusions' => '', 'importance' => 'Majeure']);
+        self::assertSame(['title' => 'T', 'due_date' => null, 'recurrence' => null, 'estimated_minutes' => null, 'description' => null, 'project' => null, 'conclusions' => null, 'importance' => 'Majeure'], $in);
     }
 
     public function testDigitsBecomeIntegers(): void
@@ -40,16 +40,16 @@ final class TaskFormTest extends TestCase
         self::assertSame(['interval' => null, 'unit' => 'day'], TaskForm::toInput(['recurrence_interval' => '', 'recurrence_unit' => 'day'])['recurrence']);
     }
 
-    public function testOnlyTheSevenFieldsAreForwardedAndForgedCategoryIsIgnored(): void
+    public function testOnlyTheEightFieldsAreForwardedAndForgedCategoryIsIgnored(): void
     {
         $in = TaskForm::toInput(['title' => 'T', 'category' => 'Pro', 'status' => 'done', 'required_actions' => [1], 'id' => '5', '_csrf' => 'x']);
-        self::assertSame(['title', 'due_date', 'recurrence', 'estimated_minutes', 'description', 'project', 'conclusions'], array_keys($in));
+        self::assertSame(['title', 'due_date', 'recurrence', 'estimated_minutes', 'description', 'project', 'conclusions', 'importance'], array_keys($in));
     }
 
     public function testNonStringValuesAreForwardedForTheUseCaseToRefuse(): void
     {
         self::assertSame(['x'], TaskForm::toInput(['title' => ['x']])['title']);
-        self::assertSame(['title' => '', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => '', 'project' => '', 'conclusions' => ''], TaskForm::valuesFromForm(['title' => ['x']]));
+        self::assertSame(['title' => '', 'due_date' => '', 'recurrence_interval' => '', 'recurrence_unit' => '', 'estimated_minutes' => '', 'description' => '', 'project' => '', 'conclusions' => '', 'importance' => ''], TaskForm::valuesFromForm(['title' => ['x']]));
     }
 
     public function testProjectAndConclusionsAreTransportedAndEmptyBecomesNull(): void
@@ -60,7 +60,19 @@ final class TaskFormTest extends TestCase
         self::assertSame('ms-hr', TaskForm::toInput(['project' => 'ms-hr'])['project'], 'aucune normalisation : le cas d\'usage refuse');
         self::assertNull(TaskForm::toInput(['project' => '', 'conclusions' => ''])['project']);
         self::assertSame(['x'], TaskForm::toInput(['project' => ['x']])['project']);
-        self::assertSame('Erendil', TaskForm::valuesFromTask(['title' => 't', 'project' => 'Erendil', 'conclusions' => 'c'])['project']);
-        self::assertSame('', TaskForm::valuesFromTask(['title' => 't', 'project' => 'OPF', 'conclusions' => null])['conclusions']);
+        self::assertSame('Erendil', TaskForm::valuesFromTask(['title' => 't', 'project' => 'Erendil', 'conclusions' => 'c', 'importance' => 'Mineure'])['project']);
+        self::assertSame('', TaskForm::valuesFromTask(['title' => 't', 'project' => 'OPF', 'conclusions' => null, 'importance' => 'Mineure'])['conclusions']);
+    }
+
+    public function testImportanceIsForwardedAsIsWithoutEmptyToNullConversion(): void
+    {
+        self::assertSame('Critique', TaskForm::toInput(['importance' => 'Critique'])['importance']);
+        self::assertSame('', TaskForm::toInput(['importance' => ''])['importance'], 'vide transmis tel quel : le cas d\'usage refuse');
+        self::assertSame('', TaskForm::toInput([])['importance'], 'champ absent : transmis vide, donc refusé');
+        self::assertSame('critique', TaskForm::toInput(['importance' => 'critique'])['importance'], 'aucune normalisation');
+        self::assertSame(['x'], TaskForm::toInput(['importance' => ['x']])['importance']);
+        self::assertSame('Mineure', TaskForm::emptyValues()['importance'], 'valeur initiale de création');
+        self::assertSame('Critique', TaskForm::valuesFromTask(['title' => 't', 'importance' => 'Critique'])['importance']);
+        self::assertSame('Majeure', TaskForm::valuesFromForm(['importance' => 'Majeure'])['importance']);
     }
 }

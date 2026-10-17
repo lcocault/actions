@@ -97,6 +97,19 @@ final class McpToolsTest extends HttpTestCase
         self::assertStringContainsString('change_task_status', $tools['update_task']['description']);
     }
 
+    public function testImportanceSchemaIsStaticStrictAndHasNoNull(): void
+    {
+        $tools = $this->tools();
+        foreach (['create_task', 'update_task', 'list_tasks'] as $name) {
+            $prop = $tools[$name]['inputSchema']['properties']['importance'];
+            self::assertSame('string', $prop['type'], "$name : pas de null (importance non effaçable)");
+            self::assertSame(TaskValidator::IMPORTANCES, $prop['enum'], $name);
+            self::assertNotContains('importance', $tools[$name]['inputSchema']['required'] ?? [], $name);
+        }
+        self::assertStringContainsString('importance', $tools['list_tasks']['description']);
+        self::assertSame(['id', 'status'], array_keys($tools['change_task_status']['inputSchema']['properties']));
+    }
+
     public function testProjectAndConclusionsSchemas(): void
     {
         $tools = $this->tools();

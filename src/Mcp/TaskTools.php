@@ -120,6 +120,7 @@ final class TaskTools
             'description' => ['type' => ['string', 'null'], 'description' => 'Description ou contexte, ou null pour l\'effacer.'],
             'project' => ['type' => 'string', 'description' => 'Projet (' . $projectHint . ', casse exacte); la catégorie Pro/Perso en découle. Obligatoire à la création; ne peut pas être effacé.'] + $projectEnum,
             'conclusions' => ['type' => ['string', 'null'], 'description' => 'Conclusions (ce qui a été appris ou décidé), ou null pour l\'effacer.'],
+            'importance' => ['type' => 'string', 'enum' => TaskValidator::IMPORTANCES, 'description' => 'Importance de la tâche (' . TaskValidator::DEFAULT_IMPORTANCE . ' par défaut à la création); ne peut pas être effacée.'],
         ];
         $status = ['type' => 'string', 'enum' => TaskStatus::codes()];
         $requiredLink = [
@@ -132,11 +133,12 @@ final class TaskTools
             self::tool('get_task', 'Lit une tâche par son identifiant, avec ses actions requises (tâches à réaliser avant).', ['id' => $id], ['id'], ['readOnlyHint' => true]),
             self::tool(
                 'list_tasks',
-                'Liste les tâches (date butée croissante, sans date en dernier). Sans pagination : filtrer par état (par exemple todo), par catégorie ou par projet pour limiter la taille de la réponse.',
+                'Liste les tâches (date butée croissante, sans date en dernier). Sans pagination : filtrer par état (par exemple todo), par catégorie, par projet ou par importance pour limiter la taille de la réponse.',
                 [
                     'status' => $status + ['description' => 'Filtre sur l\'état.'],
                     'category' => ['type' => 'string', 'enum' => TaskValidator::CATEGORIES, 'description' => 'Filtre sur la catégorie (celle du projet de la tâche).'],
                     'project' => ['type' => 'string', 'description' => 'Filtre exact sur le projet (nom, casse exacte).'] + $projectEnum,
+                    'importance' => ['type' => 'string', 'enum' => TaskValidator::IMPORTANCES, 'description' => 'Filtre exact sur l\'importance.'],
                 ],
                 [],
                 ['readOnlyHint' => true],
