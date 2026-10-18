@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Actions;
 
 use Actions\Application\Diagnostic;
+use Actions\Application\ProjectOverviewService;
 use Actions\Application\ProjectRepository;
 use Actions\Application\ProjectService;
 use Actions\Application\TaskRepository;
@@ -51,12 +52,26 @@ final class Bootstrap
         return new ProjectService(new ProjectRepository(self::connection($config)));
     }
 
-    /** $session : NativeSession par défaut (les tests passent une session en mémoire). */
-    public static function kernel(Config $config, ?Session $session = null): Kernel
+    /** Vue projet (synthèse et matrice). $today : jour de référence AAAA-MM-JJ, injectable (défaut : jour courant en Europe/Paris). */
+    public static function projectOverviewService(Config $config, ?\Closure $today = null): ProjectOverviewService
+    {
+        $connect = self::connection($config);
+
+        return new ProjectOverviewService(new ProjectRepository($connect), new TaskRepository($connect), $today);
+    }
+
+    /**
+     * $session : NativeSession par défaut (les tests passent une session en mémoire).
+     * $today : jour de référence de la vue projet, fixé par les tests.
+     *
+     * @param ?\Closure():string $today
+     */
+    public static function kernel(Config $config, ?Session $session = null, ?\Closure $today = null): Kernel
     {
         $diagnostic = new Diagnostic(static fn (): \PDO => Database::connect($config));
         $tasks = self::taskService($config);
         $projects = self::projectService($config);
+        $overview = self::projectOverviewService($config, $today);
         $basePath = $config->appBasePath;
         $https = ($_SERVER['HTTPS'] ?? '') !== '' && $_SERVER['HTTPS'] !== 'off';
 
@@ -64,6 +79,7 @@ final class Bootstrap
             new PortalAdapter(
                 $tasks,
                 $projects,
+                $overview,
                 $session ?? new NativeSession($https, $basePath !== '' ? $basePath : '/'),
                 $config->portalAllowedHosts,
                 basePath: $basePath,

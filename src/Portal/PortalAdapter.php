@@ -6,6 +6,8 @@ namespace Actions\Portal;
 
 use Actions\Application\DatabaseUnavailable;
 use Actions\Application\DomainError;
+use Actions\Application\ProjectNotFound;
+use Actions\Application\ProjectOverviewService;
 use Actions\Application\ProjectService;
 use Actions\Application\TaskNotFound;
 use Actions\Application\TaskService;
@@ -17,7 +19,7 @@ use Actions\Http\Response;
 
 /**
  * Portail web : routage, garde de chaque requête (Host, Origin, CSRF), en-têtes de sécurité et conversion
- * des erreurs en pages. Aucune règle métier : les cas d'usage sont ceux de TaskService.
+ * des erreurs en pages. Aucune règle métier : les cas d'usage sont ceux de TaskService, ProjectService et ProjectOverviewService.
  */
 final class PortalAdapter
 {
@@ -32,11 +34,13 @@ final class PortalAdapter
 
     private readonly Renderer $renderer;
     private readonly TaskPages $pages;
+    private readonly ProjectPages $projectPages;
 
     /** @param list<string> $allowedHosts noms d'hôte en minuscules, sans port */
     public function __construct(
         TaskService $tasks,
         ProjectService $projects,
+        ProjectOverviewService $overview,
         private readonly Session $session,
         private readonly array $allowedHosts,
         ?View $view = null,
@@ -44,6 +48,7 @@ final class PortalAdapter
     ) {
         $this->renderer = new Renderer($view ?? new View(prefix: $basePath), $session);
         $this->pages = new TaskPages($tasks, $projects, $this->renderer);
+        $this->projectPages = new ProjectPages($projects, $overview, $this->renderer);
     }
 
     public function handle(Request $request): Response
@@ -107,6 +112,15 @@ final class PortalAdapter
         if ($path === '/tasks/new') {
             return ['GET' => fn (): Response => $this->pages->newForm()];
         }
+        if ($path === '/projects') {
+            return ['GET' => fn (): Response => $this->projectPages->list(), 'POST' => fn (): Response => $this->projectPages->create($request)];
+        }
+        if ($path === '/projects/new') {
+            return ['GET' => fn (): Response => $this->projectPages->newForm()];
+        }
+        if (str_starts_with($path, '/projects/')) {
+            return $this->projectRoute($path, $request);
+        }
         if (preg_match('#^/tasks/([^/]+)(?:/(edit|delete|status|reopen|required-actions)|/required-actions/([^/]+)/delete)?$#', $path, $m) !== 1) {
             return null;
         }
@@ -130,6 +144,24 @@ final class PortalAdapter
         };
     }
 
+    /** @return ?array<string,\Closure():Response> */
+    private function projectRoute(string $path, Request $request): ?array
+    {
+        if (preg_match('#^/projects/([^/]+)(?:/(edit|delete))?$#', $path, $m) !== 1) {
+            return null;
+        }
+        $id = PathId::parse($m[1]);
+        if ($id === null) {
+            return null;
+        }
+
+        return match ($m[2] ?? '') {
+            '' => ['GET' => fn (): Response => $this->projectPages->show($id), 'POST' => fn (): Response => $this->projectPages->update($id, $request)],
+            'edit' => ['GET' => fn (): Response => $this->projectPages->editForm($id)],
+            default => ['GET' => fn (): Response => $this->projectPages->deleteConfirm($id), 'POST' => fn (): Response => $this->projectPages->delete($id)],
+        };
+    }
+
     private function notFound(): Response
     {
         return $this->renderer->error(404, 'Introuvable', 'Page introuvable.');
@@ -140,6 +172,9 @@ final class PortalAdapter
         try {
             if ($e instanceof TaskNotFound) {
                 return $this->renderer->error(404, 'Tâche introuvable', 'Tâche introuvable.');
+            }
+            if ($e instanceof ProjectNotFound) {
+                return $this->renderer->error(404, 'Projet introuvable', 'Projet introuvable.');
             }
             if ($e instanceof DomainError) {
                 $status = DomainStatus::of($e);

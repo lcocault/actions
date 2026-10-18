@@ -533,7 +533,7 @@ final class PortalTasksActionsTest extends DbTestCase
         $connect = static function (): \PDO {
             throw new \PDOException('SQLSTATE[XX000] secret_table password=hunter2');
         };
-        $portal = new PortalAdapter(\Actions\Tests\Support\Services::tasks($connect), \Actions\Tests\Support\Services::projects($connect), $this->session, ['127.0.0.1']);
+        $portal = new PortalAdapter(\Actions\Tests\Support\Services::tasks($connect), \Actions\Tests\Support\Services::projects($connect), \Actions\Tests\Support\Services::overview($connect), $this->session, ['127.0.0.1']);
         foreach ([
             ['POST', '/tasks/1/status', ['status' => 'done']],
             ['POST', '/tasks/1/required-actions', ['required_id' => '2']],

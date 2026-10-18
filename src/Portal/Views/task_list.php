@@ -78,7 +78,7 @@
     <tr>
       <td><a href="<?= $url('/tasks/' . $task['id']) ?>"><?= $e($task['title']) ?></a></td>
       <td><?= $e($task['category']) ?></td>
-      <td><?= $e($task['project']) ?></td>
+      <td><?php if (isset($projectIds[$task['project']])): ?><a href="<?= $url('/projects/' . $projectIds[$task['project']]) ?>"><?= $e($task['project']) ?></a><?php else: ?><?= $e($task['project']) ?><?php endif; ?></td>
       <td><?= $e($task['importance']) ?></td>
       <td><span class="status status-<?= $e($task['status']) ?>"><?= $e(\Actions\Portal\Labels::status($task['status'])) ?></span></td>
       <td><?= $e(\Actions\Portal\Labels::date($task['due_date'])) ?></td>

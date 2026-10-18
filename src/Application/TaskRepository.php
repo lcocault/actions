@@ -125,6 +125,29 @@ final class TaskRepository extends PdoRepository
         return $this->run('SELECT 1 FROM tasks WHERE id = :id', ['id' => $id])->fetchColumn() !== false;
     }
 
+    /**
+     * Lecture minimale des tâches d'un projet pour la vue projet (sans actions requises), triées due_date croissante
+     * (sans date en dernier), puis id.
+     *
+     * @return list<array{id:int,title:string,status:string,importance:string,due_date:?string}>
+     */
+    public function findOverviewRows(int $projectId): array
+    {
+        $rows = $this->run(
+            "SELECT t.id, t.title, t.status, t.importance, to_char(t.due_date, 'YYYY-MM-DD') AS due_date"
+            . ' FROM tasks t WHERE t.project_id = :project_id ORDER BY t.due_date ASC NULLS LAST, t.id ASC',
+            ['project_id' => $projectId],
+        )->fetchAll();
+
+        return array_map(static fn (array $r): array => [
+            'id' => (int) $r['id'],
+            'title' => (string) $r['title'],
+            'status' => (string) $r['status'],
+            'importance' => (string) $r['importance'],
+            'due_date' => $r['due_date'] === null ? null : (string) $r['due_date'],
+        ], $rows);
+    }
+
     /** @return ?array<string,mixed> forme `Task` */
     public function find(int $id, bool $forUpdate = false): ?array
     {

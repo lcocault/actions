@@ -42,11 +42,11 @@ final class McpTest extends HttpTestCase
         self::assertSame('', $r->body);
     }
 
-    public function testToolsListExposesNineToolsInOrder(): void
+    public function testToolsListExposesTenToolsInOrder(): void
     {
         $tools = $this->rpc('tools/list')['result']['tools'];
         self::assertSame(
-            ['ping', 'create_task', 'get_task', 'list_tasks', 'update_task', 'delete_task', 'add_required_action', 'remove_required_action', 'change_task_status'],
+            ['ping', 'create_task', 'get_task', 'list_tasks', 'update_task', 'delete_task', 'add_required_action', 'remove_required_action', 'change_task_status', 'list_projects'],
             array_column($tools, 'name'),
         );
         foreach ($tools as $tool) {

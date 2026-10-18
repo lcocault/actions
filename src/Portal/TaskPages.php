@@ -68,6 +68,7 @@ final class TaskPages
             $criteria[$name] = $value;
             $filters[$name] = is_string($value) ? $value : '';
         }
+        $projects = $this->projects->list(); // nom -> identifiant (liens vers la vue projet) et liste du filtre
         try {
             $tasks = $this->tasks->list($criteria);
         } catch (InvalidTask $e) {
@@ -82,7 +83,8 @@ final class TaskPages
             'filters' => $filters,
             'statuses' => Labels::statuses(),
             'isFiltered' => $filters['status'] !== '' || $filters['category'] !== '' || $filters['project'] !== '' || $filters['importance'] !== '' || $filters['hide_done'],
-            'projects' => $this->projects->names(),
+            'projects' => array_column($projects, 'name'),
+            'projectIds' => array_column($projects, 'id', 'name'),
             'importances' => TaskValidator::IMPORTANCES,
         ]);
     }
@@ -118,6 +120,7 @@ final class TaskPages
 
         return $this->renderer->page($status, $task['title'], 'task_detail', [
             'task' => $task,
+            'projectId' => array_column($this->projects->list(), 'id', 'name')[$task['project']] ?? null,
             'statusById' => $statusById,
             'candidates' => $all,
             'transitions' => $transitions,
@@ -320,7 +323,7 @@ final class TaskPages
             'summary' => $summary,
             'errors' => $errors,
             'units' => Labels::formUnits(),
-            'projects' => $this->projects->names(),
+            'projects' => array_column($this->projects->list(), 'name'),
             'importances' => TaskValidator::IMPORTANCES,
             'csrf' => $this->renderer->csrf(),
         ]);

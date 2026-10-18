@@ -41,6 +41,26 @@ final class BasePathTasksTest extends DbTestCase
         self::assertSame(200, $this->kernel->handle(new Request('GET', "/actions/api/v1/tasks/$id"))->status);
     }
 
+    public function testProjectPagesAreRoutedAndLinkedUnderPrefix(): void
+    {
+        $host = ['host' => '127.0.0.1:8080'];
+        $r = $this->kernel->handle(new Request('POST', '/actions/projects', $host, '', [], ['_csrf' => $this->session->csrfToken(), 'name' => 'Préfixé', 'category' => 'Pro']));
+        self::assertSame(303, $r->status);
+        self::assertSame('/actions/projects', $r->headers['Location']);
+        $id = $this->projectId('Préfixé');
+        foreach (['/actions/projects', '/actions/projects/new', "/actions/projects/$id", "/actions/projects/$id/edit", "/actions/projects/$id/delete"] as $path) {
+            $page = $this->kernel->handle(new Request('GET', $path, $host));
+            self::assertSame(200, $page->status, $path);
+            preg_match_all('/\b(?:href|action|src)="([^"]*)"/', $page->body, $m);
+            foreach ($m[1] as $url) {
+                if (str_starts_with($url, '/')) {
+                    self::assertStringStartsWith('/actions/', $url, $path);
+                }
+            }
+        }
+        self::assertSame(404, $this->kernel->handle(new Request('GET', "/projects/$id", $host))->status, 'sans le préfixe');
+    }
+
     public function testPortalCreateRedirectsAndPagesAreLinkedUnderPrefix(): void
     {
         $host = ['host' => '127.0.0.1:8080'];

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Actions\Tests\Support;
 
+use Actions\Application\ProjectOverviewService;
 use Actions\Application\ProjectRepository;
 use Actions\Application\ProjectService;
 use Actions\Application\TaskRepository;
@@ -22,5 +23,11 @@ final class Services
     public static function projects(\Closure $connect): ProjectService
     {
         return new ProjectService(new ProjectRepository($connect));
+    }
+
+    /** @param \Closure():\PDO $connect */
+    public static function overview(\Closure $connect, ?\Closure $today = null): ProjectOverviewService
+    {
+        return new ProjectOverviewService(new ProjectRepository($connect), new TaskRepository($connect), $today);
     }
 }

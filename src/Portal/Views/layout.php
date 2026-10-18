@@ -13,6 +13,7 @@
   <nav aria-label="Navigation principale">
     <a href="<?= $url('/tasks') ?>">Tâches</a>
     <a href="<?= $url('/tasks/new') ?>">Nouvelle tâche</a>
+    <a href="<?= $url('/projects') ?>">Projets</a>
   </nav>
 </header>
 <main id="contenu">

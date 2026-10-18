@@ -14,6 +14,8 @@ Légende des statuts : **existant** (dans le dépôt, vérifiable), **proposé**
 
 **Tranche « Importance d'une action » (2026-10-17)** : besoin et décisions I1 à I8 **validés** par l'utilisateur (transmis par le coordinateur, voir BACKLOG); conception **validée** par l'utilisateur et **livrée** par le Developer (migration `0005` appliquée en local seulement; 745 tests OK sur PostgreSQL 17 local, rapporté par le Developer, non rejoué par l'Architecte), dans « Importance d'une action ». Lus par l'Architecte à la conception : `TaskRepository`, `TaskValidator`, `TaskService`, `TaskTools` (schémas), `TaskPages` (filtres), migrations `0002`, `0004` (en tête), `database/migrations/README.md`, assertions de tests citées par recherche ciblée. Relus à la livraison (recherche ciblée) : `0005_task_importance.sql`, `TaskValidator`, `TaskRepository`, conformes à la section.
 
+**Tranche 2 des projets, vue projet, synthèse et matrice (2026-10-18)** : conception **validée** par l'utilisateur et **livrée en local** (rapporté par le Developer : phpunit 815 tests OK, smoke HTTP local; **non vérifié** : navigateur, AlwaysData, non rejoué par l'Architecte), dans « Gestion des projets dans le portail, vue projet, synthèse et matrice d'Eisenhower (tranche 2) ». Relu par l'Architecte à la livraison : `src/Http/Kernel.php` seulement (routage `/projects`). Lus à la conception : `ProjectService`, `ProjectRepository`, `PdoRepository`, `TaskService`, `TaskRepository` (colonnes, `findAll`), `PortalAdapter`, `TaskPages`, `Messages`, `Labels`, `DomainStatus`, `NextDueDate`, `Bootstrap`, `TaskTools`, `ToolArguments`, `McpAdapter` (recherches ciblées), `ProjectInUse`, `ProjectNameTaken`, `layout.php` (navigation). Aucun test rejoué.
+
 ## Décisions validées (tranche « squelette »)
 
 - **Validé** : PHP sans framework + Composer minimal (chaque dépendance justifiée).
@@ -663,7 +665,7 @@ src/Http/DomainStatus.php, PathId.php   Extraits de RestAdapter (voir plus haut)
 public/assets/portal.css
 ```
 
-- `Kernel` : le portail reçoit `/`, `/tasks` et `/tasks/...` (aucun conflit avec `/api/v1` ni `/mcp`); les autres chemins inconnus restent en 404 JSON (existant). `Bootstrap::kernel(Config, ?Session = null)` : `NativeSession` par défaut; `PortalAdapter` reçoit `TaskService`, `Session` et les hôtes autorisés. Signature compatible avec les appels existants.
+- `Kernel` : le portail reçoit `/`, `/tasks` et `/tasks/...` (depuis la tranche 2 : aussi `/projects` et `/projects/...`) (aucun conflit avec `/api/v1` ni `/mcp`); les autres chemins inconnus restent en 404 JSON (existant). `Bootstrap::kernel(Config, ?Session = null)` : `NativeSession` par défaut; `PortalAdapter` reçoit `TaskService`, `Session` et les hôtes autorisés. Signature compatible avec les appels existants.
 - `Request` gagne `public readonly array $form = []` (dernier argument, appels existants valides), rempli par `fromGlobals()` depuis `$_POST`. Seule modification d'une classe HTTP; `Response` inchangée (en-têtes libres; `X-Content-Type-Options: nosniff` déjà ajouté par `send()`).
 - **Gabarits** : PHP natif, un seul assistant `$e(mixed): string` = `htmlspecialchars(..., ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')`, appliqué à **toute** valeur affichée, y compris dans les attributs; `$url()` pour les liens. Aucune sortie brute hors `$e`/`$url`; les textes de messages sont eux aussi échappés. Les sauts de ligne d'une description s'affichent par CSS `white-space: pre-wrap`, pas par `nl2br`. Test de garde : un test unitaire qui parcourt `Views/` et refuse tout `<?=` ou `echo` qui n'appelle pas `$e(`/`$url(` (filet bon marché, non exhaustif).
 - Dépendance dirigée comme les autres adaptateurs : `Portal` -> `Application` (`TaskService`, `TaskStatus`, exceptions). Aucun SQL, aucun `PDO`. L'accès aux tâches liées d'une page passe par `list()`.
@@ -1230,12 +1232,12 @@ Statuts : `DomainStatus` : `InvalidProject` = 422 (par classe, comme `InvalidTas
 ### Contrat MCP (validé)
 
 - **Tranche 1** : aucun nouvel outil. `create_task` : propriétés `title`, `project` (obligatoires `["title","project"]), `due_date`, … ; **`category` retiré** des propriétés (un client qui l'envoie reçoit `field_unknown` en `isError`, octet pour octet comme REST). `update_task` : `project` (`type: "string"`, pas `null`) sans `category`. `list_tasks` : `category` (`Pro`/`Perso`, inchangé), `project`. **Énumération dynamique** : `enum` de `project` (et des filtres) construite à chaque `tools/list` à partir de `ProjectService::names()`; si la base est injoignable, le schéma est servi **sans `enum`** (erreur journalisée) afin que `initialize`, `ping` et `tools/list` restent indépendants de la base comme dans le contrat du squelette (H6). Limite connue : un client qui garde `tools/list` en cache voit une énumération périmée après création, renommage ou suppression d'un projet; si cela gêne, retirer l'`enum` et lister les noms dans la description est une évolution compatible.
-- **Tranche 2** : `list_projects` : aucun argument (`additionalProperties: false`), renvoie le tableau `Project` (même JSON que `GET /projects`), appelle `ProjectService::list()`; erreurs : `-32602` si arguments non vides, `-32603` sur incident. Outil en lecture seule (10 outils au total avec `ping`). Pas d'outil d'écriture sur les projets (PC7).
+- **Tranche 2** (**corrigé le 2026-10-18, validé** : le texte initial disait `-32602` pour des arguments non vides; contrat de la section de la tranche 2) : `list_projects` : aucun argument (`additionalProperties: false`), renvoie le tableau `Project` (même JSON que `GET /projects`), appelle `ProjectService::list()`; erreurs : argument inconnu = `isError` avec `field_unknown` (comme les outils de tâches), `-32603` sur incident. Outil en lecture seule (10 outils au total avec `ping`). Pas d'outil d'écriture sur les projets (PC7).
 
 ### Portail (validé)
 
 - **Tranche 1** : formulaires de création/modification : champ « Catégorie » **supprimé**; liste « Projet » obligatoire (« Choisir… » puis les projets, valeur = nom), alimentée par `ProjectService::list()`; la catégorie s'affiche en lecture seule dans le détail et la liste (« selon le projet »). Filtre « Projet » dynamique, filtre « Catégorie » inchangé. `TaskForm` : `category` sort de `FIELDS`; un champ `category` forgé dans un POST est ignoré par le portail comme tout champ de formulaire inconnu (le cas d'usage reste le garde : un appel direct à `TaskService` le refuse) — écart assumé par rapport à PC11 pour le portail (H7 tranchée par l'utilisateur : ignoré, pas de 422 de formulaire; REST et MCP refusent). `project_invalid` : message du cas d'usage près du champ `f-project`. `PortalAdapter` reçoit `ProjectService` (adaptation de ses constructions dans les tests).
-- **Tranche 2 (esquisse)** : pages `/projects` (liste avec catégorie et `task_count`), `/projects/new`, `/projects/{id}/edit` (nom et catégorie; affiche le nombre de tâches concernées avant de changer la catégorie, puis `tasks_recategorized` en message), `/projects/{id}/delete` (page de confirmation comme PW5; refus 409 avec le nombre de tâches et lien vers la liste filtrée), mêmes gardes (CSRF, `Origin`, `Host`) que le portail existant, `Messages` étendu aux codes projet. Aucun cas d'usage nouveau.
+- **Tranche 2 (esquisse, précisée et remplacée par « Gestion des projets dans le portail, vue projet, synthèse et matrice d'Eisenhower (tranche 2) », proposée le 2026-10-18)** : pages `/projects` (liste avec catégorie et `task_count`), `/projects/new`, `/projects/{id}/edit` (nom et catégorie; affiche le nombre de tâches concernées avant de changer la catégorie, puis `tasks_recategorized` en message), `/projects/{id}/delete` (page de confirmation comme PW5; refus 409 avec le nombre de tâches et lien vers la liste filtrée), mêmes gardes (CSRF, `Origin`, `Host`) que le portail existant, `Messages` étendu aux codes projet. Aucun cas d'usage nouveau.
 
 ### Impact (analyse, validée)
 
@@ -1371,6 +1373,126 @@ Statut : points ci-dessous **validés** avec la conception (J1 à J5 inclus, auc
 **Hypothèses à confirmer** : J1 — `importance: null` explicite à la **création** : refusé (422), comme à la modification, et non traité comme absent (cohérent avec `title`/`project`; la décision I2 ne vise que la modification); J2 — `?importance=` vide refusé en REST (comme `category`/`project`) alors que le portail le traduit en « Toutes »; J3 — le portail ne propose pas d'option vide pour l'importance (la valeur par défaut est `Mineure`); J4 — nom `importance_invalid`; J5 — numéro `0005`.
 **Question produit** : aucune ouverte. Le tri ou le regroupement par importance restent hors tranche (I5).
 **Vérifié** : `0005` et tests sur PostgreSQL 17 local (rapporté par le Developer). **Non vérifié** : `0005` sur PostgreSQL 16 et 18 et sur AlwaysData (droit `ALTER TABLE`, pgBouncer; jamais migré hors local); rendu navigateur (sauf mention contraire du Developer); comportement des clients MCP avec `tools/list` en cache.
+
+## Gestion des projets dans le portail, vue projet, synthèse et matrice d'Eisenhower (tranche 2) — conception du 2026-10-18, **validée** et **livrée en local**
+
+**Statuts (mis à jour le 2026-10-18 après livraison).** **Validé** (utilisateur) : V1, V6 (« moins d'un mois » = même quantième du mois suivant, exclu, règle de fin de mois des périodicités), V7 (b), V8, V9, V11, la conception structurante (points 1 à 4 de « Points à faire valider »), les hypothèses H-A à H-E, `list_projects` avec `field_unknown` en `isError` pour tout argument. **Livré en local** : toute la tranche (le code fait foi; 815 tests OK et smoke HTTP local, rapportés par le Developer, non rejoués par l'Architecte). **Non vérifié** : rendu navigateur, clavier, lecteur d'écran, AlwaysData. Les intertitres ci-dessous disant « (proposé) » valent **validé**. Statuts antérieurs : validé (utilisateur, via le backlog) : PC4 (suppression d'un projet utilisé refusée, 409), PC5 (renommage libre), PC6 (changement de catégorie propagé, nombre affiché), PC7 (MCP en lecture seule), PC8 (nom), PC12 (accueils ordinaires); V2/V3 (un compteur par état + total, ni retard ni pourcentage), V4 (Terminées hors grille, comptées), V5 (sans date : hors grille, comptée à part; en retard : colonne « moins d'une semaine » avec la mention « en retard »), V10 (portail seul, calcul en couche commune, date du jour injectable). (V1, V6, V7 (b), V8, V9, V11 : étaient « sans objection », désormais validés ci-dessus.) **Existant** (relu le 2026-10-18) : `ProjectService` (list, get, create, update, delete, names), `ProjectValidator`, `ProjectRepository` (dont `idByName`, `countTasks`), erreurs `Project*`, `ProjectController` (REST), `DomainStatus` (déjà `project_not_found` 404, `project_name_taken` 409, `project_in_use` 409, `InvalidProject` 422), `PortalAdapter`/`TaskPages`, `TaskTools`, `NextDueDate`, `Labels`. Aucun test rejoué par l'Architecte.
+
+### Décisions
+
+1. **Gestion des projets (portail) : aucun cas d'usage nouveau.** Le portail appelle `ProjectService` tel quel, comme REST (`ProjectController`). Toutes les règles (nom, unicité insensible à la casse, 409 `project_in_use`, `tasks_recategorized`) restent dans `ProjectService`/`ProjectValidator`/la base. Le portail ne prévérifie rien (pas de « projet vide ? » avant suppression : la base arbitre).
+2. **Vue projet, synthèse et matrice : un seul cas d'usage nouveau, `ProjectOverviewService::overview(int $id)`**, en couche commune, qui renvoie synthèse et matrice calculées sur **une seule lecture** des tâches du projet (donc cohérentes entre elles : cellules + hors grille = total, par construction). Alternative écartée : ajouter la méthode à `ProjectService` (qui n'a pas besoin de lire les tâches ; responsabilité de lecture/statistique distincte de celle d'écriture de projets). Alternative écartée : comptage par `GROUP BY` SQL + requête séparée pour la matrice (deux instantanés qui peuvent diverger, deux endroits à tester).
+3. **Classement d'urgence : une classe pure `UrgencyClassifier`** (sans base ni horloge), testable aux bornes. L'horloge est injectée dans `ProjectOverviewService` sous forme de `\Closure():string` renvoyant le jour `AAAA-MM-JJ` (défaut : jour courant en `Europe/Paris`, `new \DateTimeImmutable('now', new \DateTimeZone('Europe/Paris'))`). Alternative écartée : interface `Clock` (un seul usage, une closure suffit; à reconsidérer si un second besoin d'horloge apparaît).
+4. **Aucune migration, aucune dépendance, aucun changement REST.** Voir « Impact ».
+5. **Lien tâche -> projet sans changer la forme `Task`.** `Task` n'expose que le nom du projet (décision validée : identifiant non exposé). Le portail retrouve l'identifiant (pour lier le projet affiché sur une tâche à `/projects/{id}`) par `ProjectService::list()` : table nom -> id construite dans `TaskPages` (casse exacte, comme la référence). Cela remplace l'appel actuel à `names()` dans la liste et les formulaires (une requête chacun, inchangé en nombre) et ajoute un `list()` au détail. Alternative écartée : ajouter `project_id` à `Task` (modifie le contrat des trois interfaces pour un simple lien de présentation).
+
+### Règle de classement (proposée; bornes V6 à valider)
+
+Entrées : `due_date` (`AAAA-MM-JJ`) et `today` (`AAAA-MM-JJ`, Europe/Paris). Écart en jours calendaires `d = due_date - today`, calculé sur des dates (`DateTimeImmutable` en `UTC` à minuit, jamais sur des heures locales : aucun effet d'heure d'été).
+
+| Condition | Colonne (code) | `late` |
+|---|---|---|
+| `d < 0` | `week` (« moins d'une semaine ») | `true` (V5) |
+| `0 <= d <= 6` | `week` | `false` |
+| `d >= 7` et `due_date < limite` | `month` (« moins d'un mois ») | `false` |
+| `due_date >= limite` | `later` (« au-delà ») | `false` |
+
+`limite` = `NextDueDate::compute(today, 1, 'month')` : même jour du mois suivant, ramené au dernier jour du mois s'il n'existe pas (règle déjà validée pour les périodicités, réutilisée plutôt que réécrite). La comparaison se fait sur les chaînes `AAAA-MM-JJ` (zéro-complétées, donc ordre lexicographique = ordre chronologique). `limite` est toujours au moins 28 jours après `today`, donc la colonne `month` n'est jamais vide par recouvrement avec `week`. Exemples (today = 2026-10-18) : 2026-10-17 -> `week` en retard; 10-18 -> `week`; 10-24 (J+6) -> `week`; 10-25 (J+7) -> `month`; 10-26 (J+8) -> `month`; 11-17 -> `month`; 11-18 (un mois exact) -> `later`. Cas de fin de mois (today = 2027-01-31) : limite 2027-02-28; 02-27 -> `month`, 02-28 -> `later`.
+
+Une tâche entre dans la grille si et seulement si : état `todo` ou `in_progress` **et** `due_date` non nulle (une `done` est « hors matrice » même sans date; une non terminée sans date est « sans date butée »). Ligne = `importance` (ordre d'affichage `Critique`, `Majeure`, `Mineure` = `array_reverse(TaskValidator::IMPORTANCES)`, source unique, V8). Une périodique compte avec sa `due_date` courante (V9) : rien de spécifique dans le calcul, son état et sa date sont ceux de la ligne.
+
+### Contrat du cas d'usage (proposé)
+
+`ProjectOverviewService::overview(int $id): array`, composé dans `Bootstrap::projectOverviewService(Config, ?\Closure $today = null)`. Lève `ProjectNotFound` (404). Forme de sortie (`ProjectOverview`) :
+
+```
+{
+  project:  Project,                                  // {id, name, category, task_count}, forme existante
+  today:    "AAAA-MM-JJ",                             // jour de référence utilisé
+  summary:  {todo:int, in_progress:int, done:int, total:int},
+  matrix:   {
+    columns: ["week","month","later"],
+    rows: [ {importance:"Critique", cells:{week:Cell, month:Cell, later:Cell}},
+            {importance:"Majeure",  cells:{...}}, {importance:"Mineure", cells:{...}} ]
+  },
+  outside:  {done:{count:int}, no_due_date:Cell}      // hors grille, jamais perdus
+}
+Cell = {count:int, tasks:list<{id:int,title:string,status:string,due_date:?string,late:bool}>}
+```
+
+Invariants testables : `summary.todo + in_progress + done = summary.total` ; somme des `count` des 9 cellules + `outside.done.count` + `outside.no_due_date.count` = `summary.total` ; `summary.done = outside.done.count` ; `summary.total = project.task_count`. Dans une cellule, tri `due_date` croissante puis `id` (celui de la requête); dans `no_due_date`, par `id`. `late` n'est vrai que dans la colonne `week`. Un projet sans tâche renvoie des zéros partout (pas d'erreur). `outside.done` ne porte que le compte (une tâche terminée n'est pas actionnable); `outside.no_due_date` porte aussi les tâches (hypothèse H-A ci-dessous).
+
+Composition : `ProjectRepository::find($id)` (404 sinon), puis `TaskRepository::findOverviewRows(int $projectId)`, nouvelle lecture minimale : `SELECT t.id, t.title, t.status, t.importance, to_char(t.due_date, 'YYYY-MM-DD') AS due_date FROM tasks t WHERE t.project_id = :project_id ORDER BY t.due_date ASC NULLS LAST, t.id ASC` (colonnes nommées, requête paramétrée, aucun chargement des actions requises; index `tasks_project_id_idx` existant). Alternative écartée : `TaskService::list(['project' => nom])` (charge les actions requises de toutes les tâches et exige le nom). Le projet et les tâches sont lus par deux instructions (pas de transaction : lecture seule, écart sans conséquence ; l'invariant `total = task_count` peut échouer au plus si une tâche est créée entre les deux lectures, à ne pas tester en concurrence).
+
+### Portail : pages et contrat (proposé)
+
+Même contrat que les pages de tâches : `text/html`, `lang="fr"`, titre distinct, PRG (303 + flash) après écriture, gardes `Host` -> méthode -> `Origin` -> CSRF inchangées, 405 + `Allow`, identifiant invalide ou projet inconnu : 404 « Projet introuvable » (`PortalAdapter::fromException` gagne `ProjectNotFound`; `/projects/new` est routé avant `{id}`). Classe `Portal\ProjectPages` (parallèle à `TaskPages`), vues `project_list`, `project_detail`, `project_form`, `project_delete`; `Labels` gagne les libellés d'urgence; lien « Projets » dans la navigation du `layout`.
+
+| Méthode, chemin | Cas d'usage | Succès | Erreurs |
+|---|---|---|---|
+| `GET /projects` | `ProjectService::list` | 200 : nom (lien vers la vue), catégorie en texte, nombre de tâches, liens Modifier/Supprimer, lien « Nouveau projet » | 503 |
+| `GET /projects/new` | — | 200 formulaire (nom; catégorie : option vide « Choisir… » puis Pro, Perso) | — |
+| `POST /projects` | `create` | 303 vers `/projects`, flash « Projet « nom » créé. » | 422 formulaire réaffiché, saisie conservée, message près du champ (`project_name_blank`, `project_name_too_long`, `category_invalid`, `text_invalid`); **409** `project_name_taken` près du nom |
+| `GET /projects/{id}` | `ProjectOverviewService::overview` | 200 vue projet (voir plus bas) | 404 |
+| `GET /projects/{id}/edit` | `get` | 200 formulaire prérempli, avec « Ce projet contient N tâche(s) : changer sa catégorie change celle de ces tâches. » | 404 |
+| `POST /projects/{id}` | `update` (envoie toujours `name` et `category`) | 303 vers `/projects`, flash « Projet enregistré. »; si `tasks_recategorized > 0` : « Catégorie changée : N tâche(s) concernée(s). » (PC6) | 404; 422 / 409 comme à la création |
+| `GET /projects/{id}/delete` | `get` | 200 confirmation nommant le projet et indiquant son nombre de tâches (information, pas une règle) | 404 |
+| `POST /projects/{id}/delete` | `get` (nom du flash) puis `delete` | 303 vers `/projects`, flash « Projet « nom » supprimé. » | 404; **409** `project_in_use` : page de confirmation réaffichée avec « Suppression impossible : ce projet contient N tâche(s). », lien vers `/tasks?project=<nom>` ; projet intact |
+
+Transport : `name` transmis tel quel (pas de `trim`, valeurs absentes = chaîne vide qui donne `project_name_blank`/`category_invalid` côté domaine), `category` telle quelle; un champ forgé de type tableau donne `field_type_invalid` (message du portail existant). Le nom est échappé partout (`$e`), y compris dans le flash et dans l'URL du filtre (`rawurlencode`). Aucune écriture par `GET`. Un nom contenant `/` n'affecte pas les routes (chemins par identifiant, décision PC existante).
+
+**Vue projet (`GET /projects/{id}`)** : titre = nom du projet; catégorie en texte; lien « Voir les tâches du projet » (`/tasks?project=<nom>`), « Modifier », « Supprimer ». Date de référence affichée (« Situation au JJ/MM/AAAA ») pour rendre la matrice lisible et vérifiable.
+- **Synthèse** : tableau avec légende, une ligne par état (« À faire », « En cours », « Terminée ») et « Total », libellé + nombre (jamais la couleur seule). Projet sans tâche : zéros et message « Ce projet ne contient aucune tâche. ».
+- **Matrice** : `<table>` avec `<caption>`, `<th scope="col">` pour le coin « Importance » (en-tête de la colonne des lignes, au lieu d'une cellule vide : accessibilité; **validé**, livré), « Moins d'une semaine », « Moins d'un mois », « Au-delà » et `<th scope="row">` pour `Critique`, `Majeure`, `Mineure`. Chaque cellule : « N action(s) » (ou « Aucune ») puis la liste des titres en liens vers `/tasks/{id}` ; mention textuelle « en retard » (V5) devant le titre quand `late`. Aucun classement ni comptage dans la vue : elle itère sur `ProjectOverview`. Sous la grille : « Terminées (hors matrice) : N » et « Sans date butée : N » avec la liste des titres en liens.
+- Depuis une tâche : le nom du projet du détail et de la liste devient un lien vers `/projects/{id}` (décision 5).
+
+### MCP : outil `list_projects` (proposé; lecture seule)
+
+Transport, authentification, gardes : inchangés. Ajout à `TaskTools::NAMES` et `definitions()` (10 outils avec `ping`).
+
+| Élément | Contrat |
+|---|---|
+| Nom | `list_projects` |
+| Cas d'usage | `ProjectService::list()` |
+| `inputSchema` | `{"type":"object","properties":{},"additionalProperties":false}`; annotations `{"readOnlyHint": true}`; description : « Liste les projets (nom, catégorie Pro/Perso, nombre de tâches), triés par nom. » |
+| Résultat | texte JSON : tableau de `Project` `[{id, name, category, task_count}]`, **identique octet pour octet** au corps de `GET /api/v1/projects`; `[]` si aucun projet |
+| Erreurs | argument inconnu : résultat `isError: true`, JSON `{"error":{"code":"field_unknown","message":...,"details":{"field":...}}}` (`ToolArguments::rejectUnknownKeys($arguments, [])`, comme les autres outils); `arguments` non objet / outil inconnu : `-32602` (existant); base injoignable : `-32603` générique (existant) |
+
+Écart avec le contrat de la tranche « Projets configurables », qui écrivait « `-32602` si arguments non vides » : seul `ping` (squelette) répond ainsi; tous les outils de tâches répondent `field_unknown` en `isError`. **Validé par l'utilisateur** : parité avec les outils de tâches (texte de la tranche 1 corrigé). Pas d'outil d'écriture sur les projets (PC7), pas d'outil pour la synthèse ni la matrice (V10). Un client qui garde `tools/list` en cache ne verra le nouvel outil qu'après rafraîchissement (même limite que les champs précédents).
+
+### Impact (analyse)
+
+| Consommateur | Effet |
+|---|---|
+| **REST** | **Aucun changement** : `/api/v1/projects` (déjà complet) et les tâches inchangés; la synthèse et la matrice ne sont pas exposées (V10). `Task`, `Project`, codes d'erreur inchangés. |
+| **MCP** | `list_projects` ajouté (compatible : les outils existants et leurs schémas ne changent pas; `tools/list` passe de 9 à 10 outils, ce que des tests comptent peut-être : `McpToolsTest`, `McpTasksTest` à adapter si le nombre ou la liste y sont figés). |
+| **Kernel** (**existant**, écart de conception relevé à la livraison, jugé **acceptable**) | La conception ne mentionnait pas `Kernel`, alors que son routage n'acheminait vers le portail que `/`, `/tasks`, `/tasks/...` (les autres chemins : 404 JSON). Sans correction, toutes les pages `/projects...` répondaient 404. Le Developer a ajouté `/projects` et `/projects/...` à la condition du portail (`src/Http/Kernel.php`). Cohérent : même motif que `/tasks` (égalité exacte ou préfixe `/projects/`, donc `/projectsX` reste en 404), aucun conflit avec `/api/v1` (REST, y compris `/api/v1/projects`, inchangé) ni `/mcp`, aucune règle métier ajoutée. `APP_BASE_PATH` : le préfixe est retiré par `Kernel` avant ce test, donc `/<prefixe>/projects` est acheminé comme `/projects`, et un chemin hors préfixe reste 404; les URL sortantes du portail passent par le même mécanisme que `/tasks` (section « Préfixe d'URL »). Le Developer a à tenir à jour le commentaire de la classe. Lacune : aucun test de préfixe (`APP_BASE_PATH` non vide) ne cible `/projects` (recherche dans `tests/` sans résultat pour `Prefix`), à ajouter; fichiers statiques `/assets/...` inchangés (servis par le serveur web, non vérifiés sous AlwaysData). |
+| **Portail** | Nouvelles routes `/projects...` (aucun conflit : `/tasks` et `/` inchangés); lien de navigation; liens projet -> vue. Constructeur `PortalAdapter` : un argument de plus (`ProjectOverviewService`), donc adaptation des appels directs (`tests/Integration/PortalTasksTest.php`, `PortalTasksActionsTest.php`, et `Bootstrap`); `Bootstrap::kernel` gagne en dernier argument facultatif `?\Closure $today = null` pour fixer la date dans les tests HTTP (appels existants valides). `TaskPages` : `names()` remplacé par `list()` pour la table nom -> id (les vues `task_list`/`task_form` consomment toujours des noms). |
+| **Couche commune / dépôts** | Ajout : `ProjectOverviewService`, `UrgencyClassifier`, `TaskRepository::findOverviewRows`. Aucune méthode existante modifiée. |
+| **Données / migrations** | **Aucune migration** : colonnes `status`, `importance`, `due_date`, `project_id` et index `tasks_project_id_idx` existent (`0002`, `0004`, `0005`). Aucun effet sur les données. |
+| **Dépendances** | **Aucune** (classes natives `DateTimeImmutable`, `DateTimeZone`). |
+| **Sécurité** | Écritures portail : mêmes gardes que les tâches (Host, Origin, CSRF, échappement, CSP sans script); requêtes paramétrées; les erreurs n'exposent que code et message français. Aucune donnée nouvelle. |
+| **Hébergement (AlwaysData)** | Rien de nouveau côté base ou extension. Un point : le fuseau `Europe/Paris` s'appuie sur la base de fuseaux embarquée par PHP (même usage déjà en place dans `Labels::dateTime`) : **non vérifié** sur le compte AlwaysData cible, comme PHP 8.3 effectif; sans objet pour le développement local. Hérités et toujours non vérifiés : réécriture d'URL, racine `public/`, sessions, `LC_CTYPE` (unicité insensible à la casse des noms non ASCII). |
+
+### Tests à écrire avant le code (proposé)
+
+1. **Unitaires `UrgencyClassifier`** (date fixe) : veille (`week`, `late`), jour même, J+6, J+7, J+8, J+30, un mois exact (`later`), un jour avant le mois exact (`month`), fin de mois (2027-01-31 -> limite 2027-02-28; année bissextile 2028-01-31 -> limite 2028-02-29), changement d'année, passage heure d'été/hiver sans effet (dates seules).
+2. **Service `ProjectOverviewService`** (PostgreSQL réel, horloge injectée) : projet avec tâches connues dans chaque état et chaque cellule (dont `done`, sans date, en retard, `Critique`/`Majeure`/`Mineure`) : compteurs, contenu des 9 cellules, `outside`, invariants (somme, `total = task_count`); projet sans tâche (zéros); autre projet non compté; périodique non terminée classée avec sa date courante, périodique terminée (occurrence suivante comptée séparément); changement d'état, de date et d'importance déplace la tâche au rappel; renommage du projet : même id, même résultat; id inconnu : `ProjectNotFound`; cas `done` sans date = `outside.done`; l'horloge par défaut renvoie un `AAAA-MM-JJ` valide (pas de test de valeur).
+3. **Portail projets** (`Bootstrap::kernel($config, $session, $today)`) : liste (accueils présents, nombre de tâches); création valide (visible dans la liste et dans la liste déroulante du formulaire de tâche); nom vide/blancs, 256 caractères, catégorie vide ou `pro` : 422 avec message près du champ et saisie conservée; doublon `opf` face à `OPF` : 409, rien créé; renommage (les tâches suivent, nouveau nom partout; sans changement : pas d'erreur); changement de catégorie avec N tâches : message avec N, catégorie des tâches lue via le détail; suppression d'un projet vide (confirmation `GET`, puis `POST`); suppression d'un projet utilisé : 409 avec N, projet intact; `POST` sans jeton, `Origin` ou `Host` étrangers : 403 sans écriture; nom `<script>` échappé (liste, vue, flash, confirmation, lien de filtre encodé); parité REST sur chaque refus (nom vide, doublon, projet utilisé : même `code`); 404 pour `/projects/999`, `/projects/abc`, `/projects/0`; 405 + `Allow`.
+4. **Portail vue projet** : synthèse (libellé + nombre), projet vide (message), matrice en tableau avec en-têtes de ligne/colonne, « en retard » en texte, liens vers `/tasks/{id}`, `outside` visibles, projet d'un autre n'apparaît pas, date de référence affichée; lien projet -> vue depuis le détail d'une tâche; garde d'échappement des gabarits (`Views/` neufs inclus).
+5. **MCP** : `tools/list` contient `list_projects` (schéma strict, `readOnlyHint`); `tools/call` renvoie le même texte que `GET /api/v1/projects` (parité d'octets) ; argument inconnu : `isError` `field_unknown`; liste reflète une création/renommage faits par REST ; aucun outil `create_project`/`update_project`/`delete_project`.
+6. Hors de ces tests (non vérifiable par eux) : rendu navigateur, clavier, lecteur d'écran sur le tableau de la matrice (liste de contrôle manuelle, comme B2).
+
+### Ordre de réalisation (proposé)
+
+(1) gestion des projets dans le portail; (2) `UrgencyClassifier` + `ProjectOverviewService` + `findOverviewRows`; (3) vue projet (synthèse); (4) matrice dans la vue; (5) `list_projects`. Chaque étape est livrable et testable seule; (2) ne dépend pas de (1).
+
+### Points à faire valider (tranche 2) — **tous validés par l'utilisateur** (historique conservé ci-dessous)
+
+**Structurant (nouveau contrat / composant, pas de schéma ni de dépendance)** : (1) nouveau cas d'usage `ProjectOverviewService` et forme `ProjectOverview` (contrat interne, base d'une exposition REST/MCP future éventuelle); (2) nouvelles routes du portail `/projects...`; (3) nouvel outil MCP `list_projects` et son traitement des arguments inconnus (`field_unknown` en `isError` plutôt que `-32602` du texte validé plus haut); (4) changement de constructeur de `PortalAdapter` et de signature de `Bootstrap::kernel` (ajout en dernier argument facultatif).
+**Hypothèses à confirmer** : H-A `outside.no_due_date` liste les titres (les Terminées ne sont que comptées); H-B le formulaire de création de projet impose le choix de la catégorie (option vide « Choisir… », pas de défaut); H-C la page de confirmation de suppression est affichée même pour un projet contenant des tâches (le refus est celui de `POST`, la base arbitre; un message préalable ne fait qu'informer); H-D le redirect après création/modification/suppression va à `/projects`; H-E le portail trouve l'identifiant du projet d'une tâche par son nom exact (décision 5).
+**Questions produit renvoyées au Product Owner / utilisateur** : confirmer explicitement V6 (la borne « moins d'un mois » est « même quantième du mois suivant, exclu », avec la règle de fin de mois des périodicités : 2027-01-31 -> limite 2027-02-28, soit 28 jours; autre lecture possible : J+30), ainsi que V7 (b), V8, V9, V11 et V1, aujourd'hui « proposés sans objection ».
+**Vérifié (rapporté par le Developer, non rejoué par l'Architecte)** : phpunit, 815 tests OK en local; smoke HTTP local. **Non vérifié** : rendu navigateur, clavier, lecteur d'écran (matrice); AlwaysData (voir « Impact »).
 
 ## Dépendances Composer (proposé)
 

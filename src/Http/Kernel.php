@@ -8,7 +8,7 @@ use Actions\Mcp\McpAdapter;
 use Actions\Portal\PortalAdapter;
 use Actions\Rest\RestAdapter;
 
-/** Routage par chemin vers les trois adaptateurs (portail : `/`, `/tasks`, `/tasks/...`). Aucune règle métier. */
+/** Routage par chemin vers les trois adaptateurs (portail : `/`, `/tasks`, `/tasks/...`, `/projects`, `/projects/...`). Aucune règle métier. */
 final class Kernel
 {
     public function __construct(
@@ -32,7 +32,8 @@ final class Kernel
             }
         }
         $path = $request->path;
-        if ($path === '/' || $path === '/tasks' || str_starts_with($path, '/tasks/')) {
+        if ($path === '/' || $path === '/tasks' || str_starts_with($path, '/tasks/')
+            || $path === '/projects' || str_starts_with($path, '/projects/')) {
             return $this->portal->handle($request);
         }
         if ($path === '/mcp') {

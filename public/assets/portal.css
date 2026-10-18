@@ -105,3 +105,11 @@ button, .button {
 .inline-form { display: inline-block; margin-left: .75rem; }
 .required li { margin-bottom: .5rem; }
 .warning { padding: .75rem 1rem; background: #fff3d6; color: #5c3b00; border: 2px solid #8a4b00; }
+
+/* Projets : vue projet, synthèse et matrice d'Eisenhower */
+table.summary { max-width: 24rem; }
+table.matrix th[scope=row] { white-space: nowrap; }
+table.matrix caption { text-align: left; font-weight: 600; padding: .5rem 0; }
+table.matrix td { min-width: 10rem; }
+table.matrix ul { margin: .25rem 0 0; padding-left: 1.1rem; }
+table.matrix .count { margin: 0; font-weight: 600; }

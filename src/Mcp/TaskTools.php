@@ -10,7 +10,7 @@ use Actions\Application\TaskStatus;
 use Actions\Application\TaskValidator;
 
 /**
- * Les huit outils des tâches : définition (nom, description, schéma, annotations) et appel de TaskService.
+ * Les outils des tâches (et `list_projects`, lecture seule) : définition (nom, description, schéma, annotations) et appel de TaskService.
  * Chaque outil = un cas d'usage + une traduction; les exceptions remontent à McpAdapter, seul endroit qui les convertit.
  */
 final class TaskTools
@@ -26,7 +26,7 @@ final class TaskTools
 
     private const NAMES = [
         'create_task', 'get_task', 'list_tasks', 'update_task', 'delete_task',
-        'add_required_action', 'remove_required_action', 'change_task_status',
+        'add_required_action', 'remove_required_action', 'change_task_status', 'list_projects',
     ];
 
     /**
@@ -67,6 +67,10 @@ final class TaskTools
                 return $name === 'add_required_action'
                     ? $this->tasks->addRequiredAction($id, $requiredId)
                     : $this->tasks->removeRequiredAction($id, $requiredId);
+            case 'list_projects':
+                ToolArguments::rejectUnknownKeys($arguments, []);
+
+                return $this->projects->list();
             case 'change_task_status':
                 ToolArguments::rejectUnknownKeys($arguments, ['id', 'status']);
                 $id = ToolArguments::id($arguments, 'id');
@@ -164,6 +168,7 @@ final class TaskTools
                 ['id' => $id, 'status' => $status + ['description' => 'Nouvel état.']],
                 ['id', 'status'],
             ),
+            self::tool('list_projects', 'Liste les projets (nom, catégorie Pro/Perso, nombre de tâches), triés par nom.', [], [], ['readOnlyHint' => true]),
         ];
     }
 

@@ -12,7 +12,7 @@
     <dt>Catégorie</dt>
     <dd><?= $e($task['category']) ?> (selon le projet)</dd>
     <dt>Projet</dt>
-    <dd><?= $e($task['project']) ?></dd>
+    <dd><?php if ($projectId !== null): ?><a href="<?= $url('/projects/' . $projectId) ?>"><?= $e($task['project']) ?></a><?php else: ?><?= $e($task['project']) ?><?php endif; ?></dd>
     <dt>Importance</dt>
     <dd><?= $e($task['importance']) ?></dd>
     <dt>Date butée</dt>

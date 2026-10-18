@@ -35,6 +35,20 @@ final class Labels
         };
     }
 
+    private const URGENCY = ['week' => 'Moins d\'une semaine', 'month' => 'Moins d\'un mois', 'later' => 'Au-delà'];
+
+    /** Colonne de la matrice (code de UrgencyClassifier) -> en-tête. */
+    public static function urgency(string $column): string
+    {
+        return self::URGENCY[$column] ?? $column;
+    }
+
+    /** « Aucune » ou « N action(s) » (cellule de la matrice). */
+    public static function actionCount(int $count): string
+    {
+        return $count === 0 ? 'Aucune' : $count . ' action(s)';
+    }
+
     /** @return array<string,string> code => libellé */
     public static function statuses(): array
     {

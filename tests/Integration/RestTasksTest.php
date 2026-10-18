@@ -303,7 +303,7 @@ final class RestTasksTest extends DbTestCase
         $projects = \Actions\Tests\Support\Services::projects($connect);
 
         return new Kernel(
-            new PortalAdapter($service, $projects, new \Actions\Tests\Support\ArraySession(), ['127.0.0.1']),
+            new PortalAdapter($service, $projects, \Actions\Tests\Support\Services::overview($connect), new \Actions\Tests\Support\ArraySession(), ['127.0.0.1']),
             new RestAdapter($diagnostic, new TaskController($service), new \Actions\Rest\ProjectController($projects)),
             new McpAdapter($diagnostic, $service, $projects, [], ['127.0.0.1']),
         );

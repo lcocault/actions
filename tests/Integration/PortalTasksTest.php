@@ -690,7 +690,7 @@ final class PortalTasksTest extends DbTestCase
 
     private function portalWith(\Closure $connect): PortalAdapter
     {
-        return new PortalAdapter(\Actions\Tests\Support\Services::tasks($connect), \Actions\Tests\Support\Services::projects($connect), $this->session, ['127.0.0.1']);
+        return new PortalAdapter(\Actions\Tests\Support\Services::tasks($connect), \Actions\Tests\Support\Services::projects($connect), \Actions\Tests\Support\Services::overview($connect), $this->session, ['127.0.0.1']);
     }
 
     public function testUnexpectedPdoErrorGivesGenericPageWithoutDetail(): void
