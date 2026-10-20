@@ -71,6 +71,7 @@ final class Bootstrap
         $diagnostic = new Diagnostic(static fn (): \PDO => Database::connect($config));
         $tasks = self::taskService($config);
         $projects = self::projectService($config);
+        $today ??= ProjectOverviewService::parisToday(); // un seul jour de référence pour la vue projet et le filtre d'urgence
         $overview = self::projectOverviewService($config, $today);
         $basePath = $config->appBasePath;
         $https = ($_SERVER['HTTPS'] ?? '') !== '' && $_SERVER['HTTPS'] !== 'off';
@@ -83,6 +84,7 @@ final class Bootstrap
                 $session ?? new NativeSession($https, $basePath !== '' ? $basePath : '/'),
                 $config->portalAllowedHosts,
                 basePath: $basePath,
+                today: $today,
             ),
             new RestAdapter($diagnostic, new TaskController($tasks, $basePath), new ProjectController($projects, $basePath)),
             new McpAdapter($diagnostic, $tasks, $projects, $config->mcpAllowedOrigins, $config->mcpAllowedHosts),

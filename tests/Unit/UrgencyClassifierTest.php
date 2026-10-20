@@ -70,4 +70,28 @@ final class UrgencyClassifierTest extends TestCase
             'aujourd\'hui invalide' => ['pas une date', '2026-10-18'],
         ];
     }
+
+    /** Placement : réutilise les cas de classify pour les non terminées avec date. */
+    #[DataProvider('cases')]
+    public function testPlacementOfOpenTaskWithDateMatchesClassify(string $today, string $due, string $column, bool $late): void
+    {
+        foreach (['todo', 'in_progress'] as $status) {
+            self::assertSame(['zone' => 'grid', 'column' => $column, 'late' => $late], UrgencyClassifier::placement($status, $due, $today));
+        }
+    }
+
+    public function testPlacementDoneIsOutsideWithOrWithoutDate(): void
+    {
+        $done = ['zone' => 'done', 'column' => null, 'late' => false];
+        self::assertSame($done, UrgencyClassifier::placement('done', null, '2026-10-18'));
+        self::assertSame($done, UrgencyClassifier::placement('done', '2026-10-01', '2026-10-18'), 'une Terminée en retard reste hors grille');
+        self::assertSame($done, UrgencyClassifier::placement('done', '2030-01-01', '2026-10-18'));
+    }
+
+    public function testPlacementOpenWithoutDateIsNoDueDate(): void
+    {
+        foreach (['todo', 'in_progress'] as $status) {
+            self::assertSame(['zone' => 'no_due_date', 'column' => null, 'late' => false], UrgencyClassifier::placement($status, null, '2026-10-18'));
+        }
+    }
 }

@@ -11,6 +11,7 @@ use Actions\Application\TaskIsRequired;
 use Actions\Application\TaskNotFound;
 use Actions\Application\TaskService;
 use Actions\Application\TaskStatus;
+use Actions\Application\TaskUrgencyFilter;
 use Actions\Application\TaskValidator;
 use Actions\Http\DomainStatus;
 use Actions\Http\PathId;
@@ -53,12 +54,14 @@ final class TaskPages
         private readonly TaskService $tasks,
         private readonly ProjectService $projects,
         private readonly Renderer $renderer,
+        private readonly \Closure $today,
     ) {
     }
 
     public function list(Request $request): Response
     {
-        $filters = ['status' => '', 'category' => '', 'project' => '', 'importance' => '', 'hide_done' => ($request->query['hide_done'] ?? '') === '1'];
+        $filters = ['status' => '', 'category' => '', 'project' => '', 'importance' => '', 'urgency' => '', 'no_due_date' => ($request->query['no_due_date'] ?? '') === '1', 'hide_done' => ($request->query['hide_done'] ?? '') === '1'];
+        $urgency = $request->query['urgency'] ?? '';
         $criteria = [];
         foreach (['status', 'category', 'project', 'importance'] as $name) {
             $value = $request->query[$name] ?? '';
@@ -74,6 +77,13 @@ final class TaskPages
         } catch (InvalidTask $e) {
             return $this->renderer->error(DomainStatus::of($e) ?? 422, 'Filtre invalide', Messages::for($e));
         }
+        $today = ($this->today)();
+        try { // filtre propre au portail (E1), même règle que la matrice de la vue projet
+            $tasks = TaskUrgencyFilter::apply($tasks, $urgency === '' ? null : $urgency, $filters['no_due_date'], $today);
+        } catch (InvalidTask $e) {
+            return $this->renderer->error(DomainStatus::of($e) ?? 422, 'Filtre invalide', Messages::for($e));
+        }
+        $filters['urgency'] = is_string($urgency) ? $urgency : '';
         if ($filters['hide_done']) { // présentation seulement : aucune règle métier, TaskService inchangé
             $tasks = array_values(array_filter($tasks, static fn (array $t): bool => $t['status'] !== 'done'));
         }
@@ -82,7 +92,9 @@ final class TaskPages
             'tasks' => $tasks,
             'filters' => $filters,
             'statuses' => Labels::statuses(),
-            'isFiltered' => $filters['status'] !== '' || $filters['category'] !== '' || $filters['project'] !== '' || $filters['importance'] !== '' || $filters['hide_done'],
+            'isFiltered' => $filters['status'] !== '' || $filters['category'] !== '' || $filters['project'] !== '' || $filters['importance'] !== '' || $filters['urgency'] !== '' || $filters['no_due_date'] || $filters['hide_done'],
+            'today' => $today,
+            'urgencies' => Labels::urgencies(),
             'projects' => array_column($projects, 'name'),
             'projectIds' => array_column($projects, 'id', 'name'),
             'importances' => TaskValidator::IMPORTANCES,

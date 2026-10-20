@@ -45,9 +45,10 @@ final class PortalAdapter
         private readonly array $allowedHosts,
         ?View $view = null,
         string $basePath = '',
+        ?\Closure $today = null,
     ) {
         $this->renderer = new Renderer($view ?? new View(prefix: $basePath), $session);
-        $this->pages = new TaskPages($tasks, $projects, $this->renderer);
+        $this->pages = new TaskPages($tasks, $projects, $this->renderer, $today ?? ProjectOverviewService::parisToday());
         $this->projectPages = new ProjectPages($projects, $overview, $this->renderer);
     }
 

@@ -402,8 +402,8 @@ final class PortalProjectsTest extends DbTestCase
 
     public function testMatrixIsAccessibleTableWithLinksAndOutsideCounts(): void
     {
-        $retard = $this->seed('En retard', 'OPF', ['importance' => 'Critique', 'due_date' => '2026-10-01']);
-        $mois = $this->seed('Dans un mois', 'OPF', ['importance' => 'Majeure', 'due_date' => '2026-11-17']);
+        $this->seed('En retard', 'OPF', ['importance' => 'Critique', 'due_date' => '2026-10-01']);
+        $this->seed('Dans un mois', 'OPF', ['importance' => 'Majeure', 'due_date' => '2026-11-17']);
         $this->seed('Lointaine', 'OPF', ['importance' => 'Mineure', 'due_date' => '2027-06-01']);
         $this->seed('Sans date', 'OPF', ['importance' => 'Critique']);
         $fin = $this->seed('Finie', 'OPF', ['importance' => 'Critique', 'due_date' => '2026-10-02']);
@@ -423,17 +423,14 @@ final class PortalProjectsTest extends DbTestCase
         }
         self::assertLessThan(strpos($html, '<th scope="row">Majeure</th>'), strpos($html, '<th scope="row">Critique</th>'));
         self::assertLessThan(strpos($html, '<th scope="row">Mineure</th>'), strpos($html, '<th scope="row">Majeure</th>'));
-        self::assertStringContainsString('<strong>en retard</strong> : <a href="/tasks/' . $retard['id'] . '">En retard</a> (01/10/2026)', $html);
-        self::assertStringContainsString('<a href="/tasks/' . $mois['id'] . '">Dans un mois</a>', $html);
-        self::assertStringContainsString('Lointaine', $html);
-        self::assertStringNotContainsString('Autre projet', $html);
-        self::assertStringNotContainsString('>Finie<', $html, 'une Terminée n\'est que comptée');
-        self::assertStringContainsString('Terminées (hors matrice) : 1', $html);
-        self::assertStringContainsString('Sans date butée : 1', $html);
-        self::assertStringContainsString('Sans date</a>', $html);
-        self::assertStringContainsString('1 action(s)', $html);
-        self::assertStringContainsString('Aucune', $html);
-        self::assertSame(3, substr_count($html, '1 action(s)'), 'trois cellules renseignées');
+        // Nombres seuls (E) : plus aucun titre ni mention « en retard » dans la vue; détail dans PortalMatrixLinksTest.
+        foreach (['En retard', 'Dans un mois', 'Lointaine', 'Autre projet', 'Finie', 'en retard</strong>'] as $absent) {
+            self::assertStringNotContainsString($absent, $html, $absent);
+        }
+        self::assertStringContainsString('Terminées :', $html);
+        self::assertStringContainsString('Sans date butée :', $html);
+        self::assertSame(3, preg_match_all('#<td class="num">\s*<a href=#', $html), 'trois cases non vides sont des liens');
+        self::assertSame(6, preg_match_all('#<td class="num">\s*<span>0<#', $html), 'six cases à 0 en texte');
     }
 
     // ----- Liens depuis les tâches -----

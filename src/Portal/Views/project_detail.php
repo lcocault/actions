@@ -40,7 +40,7 @@ $none = $summary['total'] === 0;
 
 <section aria-labelledby="h-matrice">
   <h2 id="h-matrice">Matrice d'Eisenhower</h2>
-  <p class="hint">Actions à faire ou en cours ayant une date butée, selon leur importance (lignes) et le délai avant leur date butée (colonnes). Une action en retard figure dans la colonne « Moins d'une semaine ».</p>
+  <p class="hint">Actions à faire ou en cours ayant une date butée, selon leur importance (lignes) et le délai avant leur date butée (colonnes). Une action en retard figure dans la colonne « Moins d'une semaine ». Un nombre ouvre la liste de ces actions.</p>
   <table class="matrix">
     <caption>Actions du projet par importance et par urgence, situation au <?= $e(\Actions\Portal\Labels::date($overview['today'])) ?></caption>
     <thead>
@@ -56,15 +56,13 @@ $none = $summary['total'] === 0;
       <tr>
         <th scope="row"><?= $e($row['importance']) ?></th>
 <?php foreach ($overview['matrix']['columns'] as $column): ?>
-<?php $cell = $row['cells'][$column]; ?>
-        <td>
-          <p class="count"><?= $e(\Actions\Portal\Labels::actionCount($cell['count'])) ?></p>
-<?php if ($cell['tasks'] !== []): ?>
-          <ul>
-<?php foreach ($cell['tasks'] as $task): ?>
-            <li><?php if ($task['late']): ?><strong>en retard</strong> : <?php endif; ?><a href="<?= $url('/tasks/' . $task['id']) ?>"><?= $e($task['title']) ?></a> (<?= $e(\Actions\Portal\Labels::date($task['due_date'])) ?>)</li>
-<?php endforeach; ?>
-          </ul>
+<?php $count = $row['cells'][$column]['count']; ?>
+<?php $what = \Actions\Portal\Labels::actionWord($count) . ', importance ' . $row['importance'] . ', échéance ' . \Actions\Portal\Labels::urgencyLower($column); ?>
+        <td class="num">
+<?php if ($count > 0): ?>
+          <a href="<?= $url('/tasks', ['project' => $project['name'], 'importance' => $row['importance'], 'urgency' => $column]) ?>"><?= $e($count) ?><span class="visually-hidden"> <?= $e($what) ?></span></a>
+<?php else: ?>
+          <span><?= $e($count) ?><span class="visually-hidden"> <?= $e($what) ?></span></span>
 <?php endif; ?>
         </td>
 <?php endforeach; ?>
@@ -74,15 +72,20 @@ $none = $summary['total'] === 0;
   </table>
 
   <h3>Hors matrice</h3>
-  <ul>
-    <li>Terminées (hors matrice) : <?= $e($overview['outside']['done']['count']) ?></li>
-    <li>Sans date butée : <?= $e($overview['outside']['no_due_date']['count']) ?>
-<?php if ($overview['outside']['no_due_date']['tasks'] !== []): ?>
-      <ul>
-<?php foreach ($overview['outside']['no_due_date']['tasks'] as $task): ?>
-        <li><a href="<?= $url('/tasks/' . $task['id']) ?>"><?= $e($task['title']) ?></a> (<?= $e(\Actions\Portal\Labels::status($task['status'])) ?>)</li>
-<?php endforeach; ?>
-      </ul>
+  <ul class="outside">
+<?php $done = $overview['outside']['done']['count']; $noDate = $overview['outside']['no_due_date']['count']; ?>
+    <li>Terminées :
+<?php if ($done > 0): ?>
+      <a class="num" href="<?= $url('/tasks', ['project' => $project['name'], 'status' => 'done']) ?>"><?= $e($done) ?><span class="visually-hidden"> <?= $e(\Actions\Portal\Labels::actionWord($done)) ?> du projet, terminées</span></a>
+<?php else: ?>
+      <span class="num"><?= $e($done) ?><span class="visually-hidden"> action du projet, terminées</span></span>
+<?php endif; ?>
+    </li>
+    <li>Sans date butée :
+<?php if ($noDate > 0): ?>
+      <a class="num" href="<?= $url('/tasks', ['project' => $project['name'], 'no_due_date' => '1']) ?>"><?= $e($noDate) ?><span class="visually-hidden"> <?= $e(\Actions\Portal\Labels::actionWord($noDate)) ?> du projet sans date butée, non terminées</span></a>
+<?php else: ?>
+      <span class="num"><?= $e($noDate) ?><span class="visually-hidden"> action du projet sans date butée, non terminées</span></span>
 <?php endif; ?>
     </li>
   </ul>

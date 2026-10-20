@@ -37,16 +37,30 @@ final class Labels
 
     private const URGENCY = ['week' => 'Moins d\'une semaine', 'month' => 'Moins d\'un mois', 'later' => 'Au-delà'];
 
+    private const URGENCY_LOWER = ['week' => 'moins d\'une semaine', 'month' => 'moins d\'un mois', 'later' => 'au-delà'];
+
     /** Colonne de la matrice (code de UrgencyClassifier) -> en-tête. */
     public static function urgency(string $column): string
     {
         return self::URGENCY[$column] ?? $column;
     }
 
-    /** « Aucune » ou « N action(s) » (cellule de la matrice). */
-    public static function actionCount(int $count): string
+    /** @return array<string,string> code => libellé (liste du filtre d'échéance) */
+    public static function urgencies(): array
     {
-        return $count === 0 ? 'Aucune' : $count . ' action(s)';
+        return self::URGENCY;
+    }
+
+    /** Tournure en minuscules pour un nom accessible : « moins d'une semaine ». */
+    public static function urgencyLower(string $column): string
+    {
+        return self::URGENCY_LOWER[$column] ?? $column;
+    }
+
+    /** « action » ou « actions » (0 et 1 au singulier) : suite du nombre dans le nom accessible des liens de la matrice. */
+    public static function actionWord(int $count): string
+    {
+        return $count > 1 ? 'actions' : 'action';
     }
 
     /** @return array<string,string> code => libellé */

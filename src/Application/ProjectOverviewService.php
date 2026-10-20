@@ -23,7 +23,13 @@ final class ProjectOverviewService
         private readonly TaskRepository $tasks,
         ?\Closure $today = null,
     ) {
-        $this->today = $today ?? static fn (): string => (new \DateTimeImmutable('now', new \DateTimeZone('Europe/Paris')))->format('Y-m-d');
+        $this->today = $today ?? self::parisToday();
+    }
+
+    /** Jour de référence par défaut : jour courant en Europe/Paris (partagé avec le filtre d'urgence du portail). */
+    public static function parisToday(): \Closure
+    {
+        return static fn (): string => (new \DateTimeImmutable('now', new \DateTimeZone('Europe/Paris')))->format('Y-m-d');
     }
 
     /**
@@ -49,18 +55,18 @@ final class ProjectOverviewService
         foreach ($rows as $row) {
             ++$summary['total'];
             ++$summary[$row['status']];
-            if ($row['status'] === 'done') {
+            $place = UrgencyClassifier::placement($row['status'], $row['due_date'], $today);
+            if ($place['zone'] === UrgencyClassifier::ZONE_DONE) {
                 ++$doneCount;
                 continue;
             }
-            if ($row['due_date'] === null) {
+            if ($place['zone'] === UrgencyClassifier::ZONE_NO_DUE_DATE) {
                 $noDueDate['tasks'][] = ['id' => $row['id'], 'title' => $row['title'], 'status' => $row['status'], 'due_date' => null, 'late' => false];
                 ++$noDueDate['count'];
                 continue;
             }
-            $urgency = UrgencyClassifier::classify($row['due_date'], $today);
-            $cell = &$cells[$row['importance']][$urgency['column']];
-            $cell['tasks'][] = ['id' => $row['id'], 'title' => $row['title'], 'status' => $row['status'], 'due_date' => $row['due_date'], 'late' => $urgency['late']];
+            $cell = &$cells[$row['importance']][(string) $place['column']];
+            $cell['tasks'][] = ['id' => $row['id'], 'title' => $row['title'], 'status' => $row['status'], 'due_date' => $row['due_date'], 'late' => $place['late']];
             ++$cell['count'];
             unset($cell);
         }

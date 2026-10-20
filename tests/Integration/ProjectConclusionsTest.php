@@ -480,7 +480,7 @@ final class ProjectConclusionsTest extends DbTestCase
         $this->make(['title' => 'Gamma', 'project' => 'Erendil']);
         $this->make(['title' => 'Delta', 'project' => 'MS-HR']);
         $full = $this->portalGet('/tasks')->body;
-        self::assertStringContainsString('<th scope="col">Projet</th>', $full);
+        self::assertStringContainsString('<th scope="col" class="col-extra">Projet</th>', $full);
         self::assertStringContainsString('for="f-project"', $full);
         foreach (['Alpha', 'Beta', 'Gamma', 'Delta'] as $title) {
             self::assertStringContainsString($title, $full);

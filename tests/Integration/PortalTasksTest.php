@@ -232,7 +232,7 @@ final class PortalTasksTest extends DbTestCase
     /** @return list<string> titres affichés dans l'ordre */
     private function titles(Response $r): array
     {
-        preg_match_all('#<td><a href="/tasks/\d+">(.*?)</a></td>#', $r->body, $m);
+        preg_match_all('#<td class="title"><a href="/tasks/\d+">(.*?)</a></td>#', $r->body, $m);
 
         return array_map(static fn (string $t): string => html_entity_decode($t, ENT_QUOTES, 'UTF-8'), $m[1]);
     }

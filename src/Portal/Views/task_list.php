@@ -1,5 +1,7 @@
 <h1>Tâches</h1>
 
+<details class="filters-panel">
+<summary>Filtres</summary>
 <form method="get" action="<?= $url('/tasks') ?>" class="filters" aria-label="Filtres de la liste">
   <div class="field">
     <label for="f-status">État</label>
@@ -37,6 +39,20 @@
 <?php endforeach; ?>
     </select>
   </div>
+  <div class="field">
+    <label for="f-urgency">Échéance</label>
+    <select id="f-urgency" name="urgency" aria-describedby="h-urgency">
+      <option value="">Toutes</option>
+<?php foreach ($urgencies as $code => $label): ?>
+      <option value="<?= $e($code) ?>"<?= $e($filters['urgency'] === $code ? ' selected' : '') ?>><?= $e($label) ?></option>
+<?php endforeach; ?>
+    </select>
+    <p class="hint" id="h-urgency">Ne concerne que les tâches non terminées ayant une date butée.</p>
+  </div>
+  <div class="field check">
+    <input type="checkbox" id="f-no-due-date" name="no_due_date" value="1"<?= $e($filters['no_due_date'] ? ' checked' : '') ?>>
+    <label for="f-no-due-date">Sans date butée seulement (tâches non terminées)</label>
+  </div>
   <div class="field check">
     <input type="checkbox" id="f-hide-done" name="hide_done" value="1"<?= $e($filters['hide_done'] ? ' checked' : '') ?>>
     <label for="f-hide-done">Masquer les tâches terminées</label>
@@ -48,13 +64,18 @@
 <?php endif; ?>
   </div>
 </form>
+</details>
 
 <?php if ($isFiltered): ?>
 <p class="filter-summary">Filtres actifs :
   état <strong><?= $e($filters['status'] === '' ? 'tous' : \Actions\Portal\Labels::status($filters['status'])) ?></strong>,
   catégorie <strong><?= $e($filters['category'] === '' ? 'toutes' : $filters['category']) ?></strong>,
   projet <strong><?= $e($filters['project'] === '' ? 'tous' : $filters['project']) ?></strong>,
-  importance <strong><?= $e($filters['importance'] === '' ? 'toutes' : $filters['importance']) ?></strong><?= $e($filters['hide_done'] ? ', tâches terminées masquées' : '') ?>.</p>
+  importance <strong><?= $e($filters['importance'] === '' ? 'toutes' : $filters['importance']) ?></strong><?php if ($filters['urgency'] !== ''): ?>, échéance <strong><?= $e(\Actions\Portal\Labels::urgencyLower($filters['urgency'])) ?></strong> (situation au <?= $e(\Actions\Portal\Labels::date($today)) ?>)<?php endif; ?>
+<?= $e($filters['no_due_date'] ? ', sans date butée seulement' : '') ?><?= $e($filters['hide_done'] ? ', tâches terminées masquées' : '') ?>.
+<?php if ($filters['project'] !== '' && isset($projectIds[$filters['project']])): ?>
+  <a href="<?= $url('/projects/' . $projectIds[$filters['project']]) ?>">Retour à la vue du projet</a>
+<?php endif; ?></p>
 <?php endif; ?>
 
 <?php if ($tasks === []): ?>
@@ -65,24 +86,24 @@
   <thead>
     <tr>
       <th scope="col">Titre</th>
-      <th scope="col">Catégorie (selon le projet)</th>
-      <th scope="col">Projet</th>
-      <th scope="col">Importance</th>
-      <th scope="col">État</th>
-      <th scope="col">Date butée</th>
-      <th scope="col">Périodicité</th>
+      <th scope="col" class="col-extra">Catégorie (selon le projet)</th>
+      <th scope="col" class="col-extra">Projet</th>
+      <th scope="col" class="col-extra">Importance</th>
+      <th scope="col" class="col-extra">État</th>
+      <th scope="col" class="col-extra">Date butée</th>
+      <th scope="col" class="col-extra">Périodicité</th>
     </tr>
   </thead>
   <tbody>
 <?php foreach ($tasks as $task): ?>
     <tr>
-      <td><a href="<?= $url('/tasks/' . $task['id']) ?>"><?= $e($task['title']) ?></a></td>
-      <td><?= $e($task['category']) ?></td>
-      <td><?php if (isset($projectIds[$task['project']])): ?><a href="<?= $url('/projects/' . $projectIds[$task['project']]) ?>"><?= $e($task['project']) ?></a><?php else: ?><?= $e($task['project']) ?><?php endif; ?></td>
-      <td><?= $e($task['importance']) ?></td>
-      <td><span class="status status-<?= $e($task['status']) ?>"><?= $e(\Actions\Portal\Labels::status($task['status'])) ?></span></td>
-      <td><?= $e(\Actions\Portal\Labels::date($task['due_date'])) ?></td>
-      <td><?= $e(\Actions\Portal\Labels::recurrence($task['recurrence'])) ?></td>
+      <td class="title"><a href="<?= $url('/tasks/' . $task['id']) ?>"><?= $e($task['title']) ?></a></td>
+      <td class="col-extra"><?= $e($task['category']) ?></td>
+      <td class="col-extra"><?php if (isset($projectIds[$task['project']])): ?><a href="<?= $url('/projects/' . $projectIds[$task['project']]) ?>"><?= $e($task['project']) ?></a><?php else: ?><?= $e($task['project']) ?><?php endif; ?></td>
+      <td class="col-extra"><?= $e($task['importance']) ?></td>
+      <td class="col-extra"><span class="status status-<?= $e($task['status']) ?>"><?= $e(\Actions\Portal\Labels::status($task['status'])) ?></span></td>
+      <td class="col-extra"><?= $e(\Actions\Portal\Labels::date($task['due_date'])) ?></td>
+      <td class="col-extra"><?= $e(\Actions\Portal\Labels::recurrence($task['recurrence'])) ?></td>
     </tr>
 <?php endforeach; ?>
   </tbody>

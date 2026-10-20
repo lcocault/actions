@@ -34,7 +34,7 @@ main { max-width: 64rem; margin: 0 auto; padding: 1.5rem; }
 h1 { font-size: 1.6rem; margin: 0 0 1rem; overflow-wrap: anywhere; }
 h2 { font-size: 1.2rem; margin: 1.75rem 0 .5rem; }
 a { color: var(--accent); }
-a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+a:focus-visible, summary:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
   outline: 3px solid #f5a300;
   outline-offset: 2px;
 }
@@ -99,6 +99,29 @@ button, .button {
   main { padding: 1rem; }
   dl { grid-template-columns: 1fr; }
   dt { margin-top: .5rem; }
+
+  /* MO4 : seule la colonne Titre reste affichée (les données restent dans le HTML). */
+  .col-extra { display: none; }
+  td.title { padding: 0; }
+  td.title a { display: flex; align-items: center; padding: .5rem .75rem; }
+
+  /* Navigation tactile */
+  header.site { padding: .5rem 1rem; gap: .25rem 1rem; }
+  header.site nav { flex-wrap: wrap; gap: 0 1.25rem; }
+  header.site nav a, .brand { display: inline-flex; align-items: center; min-height: 2.75rem; }
+  button, .button { min-height: 2.75rem; display: inline-flex; align-items: center; justify-content: center; }
+  .inline-form { display: block; margin: .5rem 0 0; }
+
+  /* Formulaires et filtres : une colonne, champs pleine largeur, 16 px minimum (pas de zoom automatique iOS) */
+  .filters .field { flex: 1 1 100%; }
+  input[type=text], input[type=number], input[type=date], select, textarea { width: 100%; max-width: 100%; font-size: max(1rem, 16px); }
+  input[type=checkbox] { width: 1.5rem; height: 1.5rem; flex: none; }
+  .field.check { min-height: 2.75rem; }
+  td, th { overflow-wrap: anywhere; }
+
+  /* MO5 : matrice 3x3 de nombres tenant dans 360 px */
+  table.matrix th, table.matrix td { padding: .5rem .25rem; }
+  table.matrix th[scope=row] { white-space: normal; }
 }
 
 /* B2 : actions requises et changement d'état */
@@ -110,6 +133,22 @@ button, .button {
 table.summary { max-width: 24rem; }
 table.matrix th[scope=row] { white-space: nowrap; }
 table.matrix caption { text-align: left; font-weight: 600; padding: .5rem 0; }
-table.matrix td { min-width: 10rem; }
-table.matrix ul { margin: .25rem 0 0; padding-left: 1.1rem; }
-table.matrix .count { margin: 0; font-weight: 600; }
+table.matrix td.num { text-align: center; font-weight: 600; }
+table.matrix td.num a, table.matrix td.num > span, .outside .num {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 2.75rem; min-height: 2.75rem;
+}
+.outside { padding-left: 1.1rem; }
+.outside .num { font-weight: 600; }
+
+/* Filtres de la liste : panneau <details> (replié par défaut). Au-dessus du seuil mobile ils sont visibles sans clic
+   quand le navigateur sait écraser ::details-content; sinon le résumé « Filtres » reste cliquable à toutes les largeurs. */
+.filters-panel { margin-bottom: 1rem; }
+.filters-panel > summary { cursor: pointer; display: flex; align-items: center; min-height: 2.75rem; font-weight: 600; }
+.filters-panel .filters { margin-bottom: 0; }
+td.title a { display: block; min-height: 2.75rem; }
+@media not all and (max-width: 40rem) {
+  @supports selector(::details-content) {
+    .filters-panel > summary { display: none; }
+    .filters-panel::details-content { content-visibility: visible; }
+  }
+}

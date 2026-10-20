@@ -545,9 +545,9 @@ final class TaskImportanceTest extends DbTestCase
         $this->make(['title' => 'Urgente', 'importance' => 'Critique']);
         $this->make(['title' => 'Banale']);
         $list = $this->portalGet('/tasks')->body;
-        self::assertMatchesRegularExpression('#<th scope="col">Importance</th>#', $list);
-        self::assertMatchesRegularExpression('#<td>Critique</td>#', $list);
-        self::assertMatchesRegularExpression('#<td>Mineure</td>#', $list);
+        self::assertMatchesRegularExpression('#<th scope="col" class="col-extra">Importance</th>#', $list);
+        self::assertMatchesRegularExpression('#<td class="col-extra">Critique</td>#', $list);
+        self::assertMatchesRegularExpression('#<td class="col-extra">Mineure</td>#', $list);
         $detail = $this->portalGet('/tasks/1')->body;
         self::assertMatchesRegularExpression('#<dt>Importance</dt>\s*<dd>Critique</dd>#', $detail);
     }

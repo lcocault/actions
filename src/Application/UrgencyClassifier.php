@@ -15,6 +15,9 @@ final class UrgencyClassifier
     public const WEEK = 'week';
     public const MONTH = 'month';
     public const LATER = 'later';
+    public const ZONE_GRID = 'grid';
+    public const ZONE_DONE = 'done';
+    public const ZONE_NO_DUE_DATE = 'no_due_date';
     public const COLUMNS = [self::WEEK, self::MONTH, self::LATER];
 
     /**
@@ -33,6 +36,27 @@ final class UrgencyClassifier
         $limit = NextDueDate::compute($today, 1, 'month');
 
         return ['column' => $dueDate < $limit ? self::MONTH : self::LATER, 'late' => false];
+    }
+
+    /**
+     * Place une tâche : hors matrice si Terminée (même sans date), « sans date butée » si non terminée sans date,
+     * sinon dans la grille (colonne et retard de classify). Règle unique partagée par la vue projet et le filtre d'urgence.
+     *
+     * @param ?string $dueDate AAAA-MM-JJ valide ou null
+     * @return array{zone:string,column:?string,late:bool}
+     */
+    public static function placement(string $status, ?string $dueDate, string $today): array
+    {
+        if ($status === 'done') {
+            return ['zone' => self::ZONE_DONE, 'column' => null, 'late' => false];
+        }
+        if ($dueDate === null) {
+            return ['zone' => self::ZONE_NO_DUE_DATE, 'column' => null, 'late' => false];
+        }
+
+        $c = self::classify($dueDate, $today);
+
+        return ['zone' => self::ZONE_GRID, 'column' => $c['column'], 'late' => $c['late']];
     }
 
     private static function daysBetween(string $from, string $to): int
