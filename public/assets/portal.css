@@ -119,7 +119,7 @@ button, .button {
   .field.check { min-height: 2.75rem; }
   td, th { overflow-wrap: anywhere; }
 
-  /* MO5 : matrice 3x3 de nombres tenant dans 360 px */
+  /* MO5 : matrice 3x4 de nombres tenant dans 360 px */
   table.matrix th, table.matrix td { padding: .5rem .25rem; }
   table.matrix th[scope=row] { white-space: normal; }
 }

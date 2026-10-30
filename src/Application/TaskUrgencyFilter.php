@@ -12,7 +12,7 @@ final class TaskUrgencyFilter
 {
     /**
      * @param list<array<string,mixed>> $tasks tâches (Task) déjà lues; l'ordre est conservé
-     * @param mixed $urgency null = filtre absent; sinon `week`, `month` ou `later`
+     * @param mixed $urgency null = filtre absent; sinon `late`, `week`, `month` ou `later`
      * @param bool $noDueDate garde les non terminées sans date butée (ET avec $urgency : résultat vide)
      * @param string $today AAAA-MM-JJ
      * @return list<array<string,mixed>>
@@ -21,7 +21,7 @@ final class TaskUrgencyFilter
     public static function apply(array $tasks, mixed $urgency, bool $noDueDate, string $today): array
     {
         if ($urgency !== null && (!is_string($urgency) || !in_array($urgency, UrgencyClassifier::COLUMNS, true))) {
-            throw new InvalidTask('urgency_invalid', 'urgency', 'L\'échéance doit être week, month ou later.');
+            throw new InvalidTask('urgency_invalid', 'urgency', 'L\'échéance doit être late, week, month ou later.');
         }
         if ($urgency === null && !$noDueDate) {
             return $tasks;

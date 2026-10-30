@@ -9,7 +9,7 @@ namespace Actions\Application;
  * lecture des tâches du projet (cellules + hors grille = total, par construction).
  *
  * Forme (`ProjectOverview`) : project (Project), today (AAAA-MM-JJ), summary {todo,in_progress,done,total},
- * matrix {columns, rows[{importance, cells{week,month,later}}]}, outside {done:{count}, no_due_date:Cell}.
+ * matrix {columns, rows[{importance, cells{late,week,month,later}}]}, outside {done:{count}, no_due_date:Cell}.
  * Cell = {count, tasks[{id,title,status,due_date,late}]}.
  */
 final class ProjectOverviewService

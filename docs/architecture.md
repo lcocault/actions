@@ -1612,3 +1612,7 @@ Le serveur n’est lié qu’à `127.0.0.1` (aucune authentification dans cette 
 ## Points à faire valider
 
 Tranche A : tout ce qui est « proposé » dans « Couche commune des tâches » (en particulier les points marqués « à valider/confirmer ») est à faire valider avant implémentation. Voir aussi le rapport de l’Architecte : contrats REST/MCP ci-dessus, dépendances, mécanisme de migrations (table de suivi), questions ouvertes. Pour l’état des décisions produit, voir [BACKLOG.md](../BACKLOG.md).
+
+## Colonne « En retard » de la matrice — issue #2, 2026-10-30
+
+**Validé par la demande de l’issue #2; remplace pour la matrice le choix V5 du 2026-10-18.** La matrice du portail comporte désormais quatre colonnes dans cet ordre : « En retard », « Moins d’une semaine », « Moins d’un mois », « Au-delà ». Une échéance passée va uniquement dans « En retard »; « Moins d’une semaine » couvre aujourd’hui à J+6. Chaque nombre garde un lien vers la liste exacte de la case, et `GET /tasks?urgency=late` est ajouté au filtre d’urgence du portail. REST, MCP, schéma et données restent inchangés; aucune migration ni dépendance.

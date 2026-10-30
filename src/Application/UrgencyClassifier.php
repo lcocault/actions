@@ -7,18 +7,19 @@ namespace Actions\Application;
 /**
  * Classement d'urgence d'une date butée par rapport à un jour de référence (calcul pur : ni base ni horloge).
  *
- * Colonnes : `week` (0 à 6 jours, ou date passée avec `late`), `month` (de 7 jours jusqu'au même quantième du mois
- * suivant, exclu) et `later` (au-delà). Les écarts se calculent sur des dates en UTC à minuit : aucun effet d'heure d'été.
+ * Fenêtres : `week` (aujourd'hui à 6 jours), `month` (de 7 jours jusqu'au même quantième du mois suivant, exclu) et
+ * `later` (au-delà). Une date passée est dans la colonne `late`. Les écarts se calculent sur des dates en UTC à minuit.
  */
 final class UrgencyClassifier
 {
     public const WEEK = 'week';
     public const MONTH = 'month';
     public const LATER = 'later';
+    public const LATE = 'late';
     public const ZONE_GRID = 'grid';
     public const ZONE_DONE = 'done';
     public const ZONE_NO_DUE_DATE = 'no_due_date';
-    public const COLUMNS = [self::WEEK, self::MONTH, self::LATER];
+    public const COLUMNS = [self::LATE, self::WEEK, self::MONTH, self::LATER];
 
     /**
      * @param string $dueDate AAAA-MM-JJ valide
@@ -40,7 +41,7 @@ final class UrgencyClassifier
 
     /**
      * Place une tâche : hors matrice si Terminée (même sans date), « sans date butée » si non terminée sans date,
-     * sinon dans la grille (colonne et retard de classify). Règle unique partagée par la vue projet et le filtre d'urgence.
+     * sinon dans la grille (les dates passées sont dans la colonne `late`). Règle unique partagée par la vue projet et le filtre.
      *
      * @param ?string $dueDate AAAA-MM-JJ valide ou null
      * @return array{zone:string,column:?string,late:bool}
@@ -56,7 +57,7 @@ final class UrgencyClassifier
 
         $c = self::classify($dueDate, $today);
 
-        return ['zone' => self::ZONE_GRID, 'column' => $c['column'], 'late' => $c['late']];
+        return ['zone' => self::ZONE_GRID, 'column' => $c['late'] ? self::LATE : $c['column'], 'late' => $c['late']];
     }
 
     private static function daysBetween(string $from, string $to): int
