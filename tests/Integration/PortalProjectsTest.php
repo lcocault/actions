@@ -402,7 +402,7 @@ final class PortalProjectsTest extends DbTestCase
 
     public function testMatrixIsAccessibleTableWithLinksAndOutsideCounts(): void
     {
-        $this->seed('En retard', 'OPF', ['importance' => 'Critique', 'due_date' => '2026-10-01']);
+        $this->seed('Action échue', 'OPF', ['importance' => 'Critique', 'due_date' => '2026-10-01']);
         $this->seed('Dans un mois', 'OPF', ['importance' => 'Majeure', 'due_date' => '2026-11-17']);
         $this->seed('Lointaine', 'OPF', ['importance' => 'Mineure', 'due_date' => '2027-06-01']);
         $this->seed('Sans date', 'OPF', ['importance' => 'Critique']);
@@ -415,7 +415,7 @@ final class PortalProjectsTest extends DbTestCase
         $this->assertHtml($r, 200);
         $html = $r->body;
         self::assertStringContainsString('<caption>', $html);
-        foreach (["Moins d'une semaine", "Moins d'un mois", 'Au-delà'] as $col) {
+        foreach (['En retard', "Moins d'une semaine", "Moins d'un mois", 'Au-delà'] as $col) {
             self::assertStringContainsString('<th scope="col">' . htmlspecialchars($col, ENT_QUOTES) . '</th>', $html);
         }
         foreach (['Critique', 'Majeure', 'Mineure'] as $row) {
@@ -424,13 +424,13 @@ final class PortalProjectsTest extends DbTestCase
         self::assertLessThan(strpos($html, '<th scope="row">Majeure</th>'), strpos($html, '<th scope="row">Critique</th>'));
         self::assertLessThan(strpos($html, '<th scope="row">Mineure</th>'), strpos($html, '<th scope="row">Majeure</th>'));
         // Nombres seuls (E) : plus aucun titre ni mention « en retard » dans la vue; détail dans PortalMatrixLinksTest.
-        foreach (['En retard', 'Dans un mois', 'Lointaine', 'Autre projet', 'Finie', 'en retard</strong>'] as $absent) {
+        foreach (['Action échue', 'Dans un mois', 'Lointaine', 'Autre projet', 'Finie', 'en retard</strong>'] as $absent) {
             self::assertStringNotContainsString($absent, $html, $absent);
         }
         self::assertStringContainsString('Terminées :', $html);
         self::assertStringContainsString('Sans date butée :', $html);
         self::assertSame(3, preg_match_all('#<td class="num">\s*<a href=#', $html), 'trois cases non vides sont des liens');
-        self::assertSame(6, preg_match_all('#<td class="num">\s*<span>0<#', $html), 'six cases à 0 en texte');
+        self::assertSame(9, preg_match_all('#<td class="num">\s*<span>0<#', $html), 'neuf cases à 0 en texte');
     }
 
     // ----- Liens depuis les tâches -----

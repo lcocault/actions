@@ -70,12 +70,12 @@ final class ProjectOverviewServiceTest extends DbTestCase
         self::assertSame($s['total'], $s['todo'] + $s['in_progress'] + $s['done']);
         $cells = 0;
         foreach ($ov['matrix']['rows'] as $row) {
-            self::assertSame(['week', 'month', 'later'], array_keys($row['cells']));
+            self::assertSame(['late', 'week', 'month', 'later'], array_keys($row['cells']));
             foreach ($row['cells'] as $column => $cell) {
                 self::assertSame($cell['count'], count($cell['tasks']));
                 $cells += $cell['count'];
                 foreach ($cell['tasks'] as $t) {
-                    self::assertTrue(!$t['late'] || $column === 'week');
+                    self::assertSame($t['late'], $column === 'late');
                 }
             }
         }
@@ -91,7 +91,7 @@ final class ProjectOverviewServiceTest extends DbTestCase
         $ov = $this->ov('Erendil');
         self::assertSame(['todo' => 0, 'in_progress' => 0, 'done' => 0, 'total' => 0], $ov['summary']);
         self::assertSame(self::TODAY, $ov['today']);
-        self::assertSame(['week', 'month', 'later'], $ov['matrix']['columns']);
+        self::assertSame(['late', 'week', 'month', 'later'], $ov['matrix']['columns']);
         self::assertSame(['Critique', 'Majeure', 'Mineure'], array_column($ov['matrix']['rows'], 'importance'));
         self::assertSame(0, $ov['outside']['done']['count']);
         self::assertSame(['count' => 0, 'tasks' => []], $ov['outside']['no_due_date']);
@@ -122,7 +122,8 @@ final class ProjectOverviewServiceTest extends DbTestCase
         self::assertSame(['todo' => 10, 'in_progress' => 2, 'done' => 2, 'total' => 14], $ov['summary']);
         self::assertSame(14, $ov['project']['task_count']);
 
-        $this->assertCell($ov, 'Critique', 'week', ['c-retard', 'c-semaine']);
+        $this->assertCell($ov, 'Critique', 'late', ['c-retard']);
+        $this->assertCell($ov, 'Critique', 'week', ['c-semaine']);
         $this->assertCell($ov, 'Critique', 'month', ['c-mois']);
         $this->assertCell($ov, 'Critique', 'later', ['c-plus']);
         $this->assertCell($ov, 'Majeure', 'week', ['M-semaine']);
@@ -132,11 +133,12 @@ final class ProjectOverviewServiceTest extends DbTestCase
         $this->assertCell($ov, 'Mineure', 'month', ['m-mois']);
         $this->assertCell($ov, 'Mineure', 'later', ['m-plus']);
 
-        $first = $ov['matrix']['rows'][0]['cells']['week']['tasks'];
+        $first = $ov['matrix']['rows'][0]['cells']['late']['tasks'];
         self::assertTrue($first[0]['late']);
         self::assertSame('2026-10-10', $first[0]['due_date']);
-        self::assertFalse($first[1]['late']);
-        self::assertSame('in_progress', $first[1]['status']);
+        $week = $ov['matrix']['rows'][0]['cells']['week']['tasks'];
+        self::assertFalse($week[0]['late']);
+        self::assertSame('in_progress', $week[0]['status']);
 
         self::assertSame(2, $ov['outside']['done']['count']);
         self::assertSame(['sans-date', 'sans-date-en-cours'], array_column($ov['outside']['no_due_date']['tasks'], 'title'));

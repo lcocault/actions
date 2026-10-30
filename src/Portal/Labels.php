@@ -35,9 +35,9 @@ final class Labels
         };
     }
 
-    private const URGENCY = ['week' => 'Moins d\'une semaine', 'month' => 'Moins d\'un mois', 'later' => 'Au-delà'];
+    private const URGENCY = ['late' => 'En retard', 'week' => 'Moins d\'une semaine', 'month' => 'Moins d\'un mois', 'later' => 'Au-delà'];
 
-    private const URGENCY_LOWER = ['week' => 'moins d\'une semaine', 'month' => 'moins d\'un mois', 'later' => 'au-delà'];
+    private const URGENCY_LOWER = ['late' => 'en retard', 'week' => 'moins d\'une semaine', 'month' => 'moins d\'un mois', 'later' => 'au-delà'];
 
     /** Colonne de la matrice (code de UrgencyClassifier) -> en-tête. */
     public static function urgency(string $column): string

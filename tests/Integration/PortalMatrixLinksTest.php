@@ -22,9 +22,9 @@ final class PortalMatrixLinksTest extends DbTestCase
     private const HOST = '127.0.0.1:8080';
     private const XSS = '<script>alert(1)</script>';
     private const TODAY = '2026-10-18';
-    /** Lignes dans l'ordre d'affichage; colonnes week, month, later. */
+    /** Lignes dans l'ordre d'affichage; colonnes late, week, month, later. */
     private const IMPORTANCES = ['Critique', 'Majeure', 'Mineure'];
-    private const COLUMNS = ['week', 'month', 'later'];
+    private const COLUMNS = ['late', 'week', 'month', 'later'];
 
     private Kernel $kernel;
     private ArraySession $session;
@@ -60,7 +60,7 @@ final class PortalMatrixLinksTest extends DbTestCase
     }
 
     /**
-     * Jeu de référence du projet OPF (9 cases) : Critique 2/1/1, Majeure 1/0/1, Mineure 0/1/3.
+     * Jeu de référence du projet OPF (12 cases) : Critique 1/1/1/1, Majeure 0/1/0/1, Mineure 0/0/1/3.
      * Plus 2 Terminées (dont une en retard), 2 sans date (dont une En cours) et du bruit dans un autre projet.
      *
      * @return array<string,array<string,int>> comptes attendus [importance][colonne]
@@ -89,14 +89,14 @@ final class PortalMatrixLinksTest extends DbTestCase
         $this->seed('Autre-2', 'MS-HR', 'Critique', null);
 
         return [
-            'Critique' => ['week' => 2, 'month' => 1, 'later' => 1],
-            'Majeure' => ['week' => 1, 'month' => 0, 'later' => 1],
-            'Mineure' => ['week' => 0, 'month' => 1, 'later' => 3],
+            'Critique' => ['late' => 1, 'week' => 1, 'month' => 1, 'later' => 1],
+            'Majeure' => ['late' => 0, 'week' => 1, 'month' => 0, 'later' => 1],
+            'Mineure' => ['late' => 0, 'week' => 0, 'month' => 1, 'later' => 3],
         ];
     }
 
     /**
-     * Les 9 cases de la vue, dans l'ordre d'affichage : [nombre, href (décodé) ou null].
+     * Les 12 cases de la vue, dans l'ordre d'affichage : [nombre, href (décodé) ou null].
      *
      * @return list<array{0:int,1:?string}>
      */
@@ -107,7 +107,7 @@ final class PortalMatrixLinksTest extends DbTestCase
         foreach ($m as $row) {
             $cells[] = isset($row[2]) && $row[2] !== '' ? [(int) $row[2], html_entity_decode($row[1], ENT_QUOTES, 'UTF-8')] : [(int) $row[3], null];
         }
-        self::assertSame(9, $count, 'neuf cases');
+        self::assertSame(12, $count, 'douze cases');
 
         return $cells;
     }
@@ -167,18 +167,19 @@ final class PortalMatrixLinksTest extends DbTestCase
                 self::assertCount($count, self::titles($list), "$importance / $column : nombre = lignes de la liste");
             }
         }
-        self::assertSame(2, count(array_filter($cells, static fn (array $c): bool => $c[0] === 0 && $c[1] === null)), 'deux cases vides (Majeure / month et Mineure / week), en texte');
+        self::assertSame(4, count(array_filter($cells, static fn (array $c): bool => $c[0] === 0 && $c[1] === null)), 'quatre cases vides en texte');
     }
 
     public function testCellListsHoldExactlyTheTasksOfTheCell(): void
     {
         $this->populate();
         $cells = self::cells($this->overviewPage());
-        self::assertEqualsCanonicalizing(['C-retard', 'C-jour'], self::titles($this->open((string) $cells[0][1])), 'Critique / week : la tâche en retard y est');
-        self::assertSame(['C-mois'], self::titles($this->open((string) $cells[1][1])));
-        self::assertSame(['M-j6'], self::titles($this->open((string) $cells[3][1])), 'J+6 : encore dans la semaine');
-        self::assertSame(['m-j7'], self::titles($this->open((string) $cells[7][1])), 'J+7 : dans le mois');
-        self::assertEqualsCanonicalizing(['m-mois-exact', 'm-loin1', 'm-loin2'], self::titles($this->open((string) $cells[8][1])), 'un mois exact : au-delà');
+        self::assertSame(['C-retard'], self::titles($this->open((string) $cells[0][1])), 'Critique / en retard');
+        self::assertSame(['C-jour'], self::titles($this->open((string) $cells[1][1])), 'Critique / semaine');
+        self::assertSame(['C-mois'], self::titles($this->open((string) $cells[2][1])));
+        self::assertSame(['M-j6'], self::titles($this->open((string) $cells[5][1])), 'J+6 : encore dans la semaine');
+        self::assertSame(['m-j7'], self::titles($this->open((string) $cells[10][1])), 'J+7 : dans le mois');
+        self::assertEqualsCanonicalizing(['m-mois-exact', 'm-loin1', 'm-loin2'], self::titles($this->open((string) $cells[11][1])), 'un mois exact : au-delà');
         foreach ($cells as [$count, $href]) {
             if ($href !== null) {
                 $titles = self::titles($this->open($href));
@@ -195,7 +196,7 @@ final class PortalMatrixLinksTest extends DbTestCase
         $parts = parse_url($href);
         self::assertSame('/tasks', $parts['path']);
         parse_str($parts['query'], $query);
-        self::assertSame(['project' => 'OPF', 'importance' => 'Critique', 'urgency' => 'week'], $query);
+        self::assertSame(['project' => 'OPF', 'importance' => 'Critique', 'urgency' => 'late'], $query);
     }
 
     // ----- Hors matrice -----
@@ -244,10 +245,10 @@ final class PortalMatrixLinksTest extends DbTestCase
             self::assertStringNotContainsString($title, $html, 'plus aucun titre dans la vue projet');
         }
         self::assertStringNotContainsString('en retard</strong>', $html);
-        self::assertStringContainsString('2<span class="visually-hidden"> actions, importance Critique, échéance moins d&#039;une semaine</span>', $html);
+        self::assertStringContainsString('1<span class="visually-hidden"> action, importance Critique, échéance en retard</span>', $html);
         self::assertStringContainsString('1<span class="visually-hidden"> action, importance Majeure, échéance au-delà</span>', $html);
         self::assertStringContainsString('<span>0<span class="visually-hidden"> action, importance Majeure, échéance moins d&#039;un mois</span></span>', $html, 'le zéro reçoit le même texte masqué');
-        foreach (["Moins d'une semaine", "Moins d'un mois", 'Au-delà'] as $col) {
+        foreach (['En retard', "Moins d'une semaine", "Moins d'un mois", 'Au-delà'] as $col) {
             self::assertStringContainsString('<th scope="col">' . htmlspecialchars($col, ENT_QUOTES) . '</th>', $html, 'en-têtes de colonne conservés');
         }
         foreach (self::IMPORTANCES as $importance) {
@@ -268,7 +269,7 @@ final class PortalMatrixLinksTest extends DbTestCase
                 self::assertCount($count, self::titles($this->open($href)));
             }
         }
-        self::assertCount(2, self::titles($this->open((string) $cells[0][1])));
+        self::assertCount(1, self::titles($this->open((string) $cells[0][1])));
     }
 
     public function testProjectNameWithMarkupIsEscapedInViewLinksAndCriteria(): void
@@ -278,7 +279,7 @@ final class PortalMatrixLinksTest extends DbTestCase
         $r = $this->get('/projects/' . $this->projectId(self::XSS));
         self::assertSame(200, $r->status);
         self::assertStringNotContainsString(self::XSS, $r->body);
-        $href = (string) self::cells($r->body)[0][1];
+        $href = (string) self::cells($r->body)[1][1];
         self::assertStringNotContainsString('<', $href);
         self::assertStringContainsString('%3Cscript%3E', $href);
         $list = $this->open($href);
@@ -301,6 +302,9 @@ final class PortalMatrixLinksTest extends DbTestCase
         self::assertStringContainsString('situation au 18/10/2026', $text);
         self::assertStringContainsString('<a href="/projects/' . $this->projectId('OPF') . '">Retour à la vue du projet</a>', $r->body);
         self::assertStringContainsString('<option value="week" selected>Moins d&#039;une semaine</option>', $r->body, 'le filtre reste modifiable et visible');
+        $late = $this->get('/tasks', ['project' => 'OPF', 'importance' => 'Critique', 'urgency' => 'late']);
+        self::assertStringContainsString('<option value="late" selected>En retard</option>', $late->body);
+        self::assertSame(['C-retard'], self::titles($late));
         // Sans projet connu : pas de lien de retour.
         self::assertStringNotContainsString('Retour à la vue du projet', $this->get('/tasks', ['urgency' => 'week'])->body);
         $noDate = $this->get('/tasks', ['project' => 'OPF', 'no_due_date' => '1']);
@@ -311,8 +315,9 @@ final class PortalMatrixLinksTest extends DbTestCase
     public function testUrgencyIsAndedWithOtherFilters(): void
     {
         $this->populate();
-        self::assertEqualsCanonicalizing(['C-retard', 'C-jour', 'M-j6'], self::titles($this->get('/tasks', ['project' => 'OPF', 'urgency' => 'week'])));
-        self::assertEqualsCanonicalizing(['C-retard', 'C-jour'], self::titles($this->get('/tasks', ['project' => 'OPF', 'urgency' => 'week', 'importance' => 'Critique', 'hide_done' => '1'])));
+        self::assertEqualsCanonicalizing(['C-jour', 'M-j6'], self::titles($this->get('/tasks', ['project' => 'OPF', 'urgency' => 'week'])));
+        self::assertEqualsCanonicalizing(['C-jour'], self::titles($this->get('/tasks', ['project' => 'OPF', 'urgency' => 'week', 'importance' => 'Critique', 'hide_done' => '1'])));
+        self::assertSame(['C-retard'], self::titles($this->get('/tasks', ['project' => 'OPF', 'urgency' => 'late'])));
         $empty = $this->get('/tasks', ['project' => 'OPF', 'urgency' => 'week', 'status' => 'done']);
         self::assertSame(200, $empty->status);
         self::assertSame([], self::titles($empty), 'week + Terminée = vide');
@@ -348,7 +353,7 @@ final class PortalMatrixLinksTest extends DbTestCase
         self::assertSame(422, $r->status);
         self::assertSame('text/html; charset=utf-8', $r->headers['Content-Type']);
         self::assertStringContainsString('Filtre invalide', $r->body);
-        self::assertStringContainsString('Échéance inconnue. Choisissez moins d\'une semaine, moins d\'un mois ou au-delà.', html_entity_decode($r->body, ENT_QUOTES, 'UTF-8'));
+        self::assertStringContainsString('Échéance inconnue. Choisissez en retard, moins d\'une semaine, moins d\'un mois ou au-delà.', html_entity_decode($r->body, ENT_QUOTES, 'UTF-8'));
         self::assertStringNotContainsString('<table', $r->body);
         self::assertStringNotContainsString('C-retard', $r->body);
         self::assertStringNotContainsString('urgency_invalid', $r->body, 'aucun code technique');
@@ -367,11 +372,11 @@ final class PortalMatrixLinksTest extends DbTestCase
             $list = $later->handle(new Request('GET', '/tasks', ['host' => self::HOST], '', $query));
             self::assertCount($count, self::titles($list), $href);
         }
-        // Au 26/10 : C-retard, C-jour (passés) et C-mois (jour même) sont en semaine; M-j6 et m-j7 aussi, en retard.
+        // Au 26/10 : C-retard, C-jour et C-mois sont en retard; M-j6 et m-j7 aussi.
         $cells = self::cells($page);
         self::assertSame(3, $cells[0][0]);
-        self::assertSame(1, $cells[3][0]);
-        self::assertSame(1, $cells[6][0]);
+        self::assertSame(1, $cells[5][0]);
+        self::assertSame(1, $cells[8][0]);
     }
 
     // ----- Liste : version mobile (structure HTML) -----

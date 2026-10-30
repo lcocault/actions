@@ -18,7 +18,7 @@ final class TaskUrgencyFilterTest extends TestCase
     private static function tasks(): array
     {
         return [
-            ['id' => 1, 'status' => 'todo', 'due_date' => '2026-10-17'],        // week, en retard
+            ['id' => 1, 'status' => 'todo', 'due_date' => '2026-10-17'],        // late
             ['id' => 2, 'status' => 'in_progress', 'due_date' => '2026-10-18'], // week (J)
             ['id' => 3, 'status' => 'todo', 'due_date' => '2026-10-24'],        // week (J+6)
             ['id' => 4, 'status' => 'todo', 'due_date' => '2026-10-25'],        // month (J+7)
@@ -39,14 +39,15 @@ final class TaskUrgencyFilterTest extends TestCase
 
     public function testEachWindowOnItsBounds(): void
     {
-        self::assertSame([1, 2, 3], self::ids(TaskUrgencyFilter::apply(self::tasks(), 'week', false, self::TODAY)));
+        self::assertSame([1], self::ids(TaskUrgencyFilter::apply(self::tasks(), 'late', false, self::TODAY)));
+        self::assertSame([2, 3], self::ids(TaskUrgencyFilter::apply(self::tasks(), 'week', false, self::TODAY)));
         self::assertSame([4, 5], self::ids(TaskUrgencyFilter::apply(self::tasks(), 'month', false, self::TODAY)));
         self::assertSame([6], self::ids(TaskUrgencyFilter::apply(self::tasks(), 'later', false, self::TODAY)));
     }
 
     public function testDoneIsNeverKept(): void
     {
-        foreach (['week', 'month', 'later'] as $u) {
+        foreach (['late', 'week', 'month', 'later'] as $u) {
             self::assertNotContains(7, self::ids(TaskUrgencyFilter::apply(self::tasks(), $u, false, self::TODAY)));
         }
         self::assertNotContains(9, self::ids(TaskUrgencyFilter::apply(self::tasks(), null, true, self::TODAY)));
@@ -69,7 +70,8 @@ final class TaskUrgencyFilterTest extends TestCase
 
     public function testDayChangesTheWindows(): void
     {
-        self::assertSame([1, 2, 3, 4, 5, 6], self::ids(TaskUrgencyFilter::apply(self::tasks(), 'week', false, '2026-11-18')), 'au 18/11 : tout le passé (en retard) et le jour même');
+        self::assertSame([1, 2, 3, 4, 5], self::ids(TaskUrgencyFilter::apply(self::tasks(), 'late', false, '2026-11-18')), 'au 18/11 : seules les échéances passées sont en retard');
+        self::assertSame([6], self::ids(TaskUrgencyFilter::apply(self::tasks(), 'week', false, '2026-11-18')), 'au 18/11 : la date du jour reste dans la semaine');
         self::assertSame([], TaskUrgencyFilter::apply(self::tasks(), 'later', false, '2026-11-18'));
     }
 

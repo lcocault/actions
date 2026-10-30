@@ -1,5 +1,10 @@
 # Journal des changements
 
+## 2026-10-30
+
+- Matrice d’Eisenhower : ajout d’une colonne « En retard » dédiée; « Moins d’une semaine » couvre maintenant aujourd’hui à J+6. Les nombres restent cliquables vers les listes exactes; le filtre du portail accepte `urgency=late`. REST, MCP et données inchangés; aucune migration ni dépendance.
+- Vérifications : tests unitaires ciblés (PHPUnit 8.5), syntaxe PHP, rendu direct du gabarit. Non vérifiés : suite complète (le dépôt requiert PHPUnit 12, indisponible faute d’accès GitHub), tests d’intégration (PostgreSQL local absent) et rendu navigateur.
+
 ## 2026-10-20
 
 - Matrice d'Eisenhower à nombres cliquables (conception de l'Architecte du 2026-10-20, décisions E1 à E4 validées). Vue projet : chaque case n'affiche que son nombre (texte si 0, lien vers `/tasks?project=…&importance=…&urgency=…` si > 0, nom accessible en texte masqué : « 3 actions, importance Critique, échéance moins d'une semaine »); plus aucun titre ni mention « en retard » dans la vue (changement de comportement voulu). « Hors matrice » : « Terminées » (`/tasks?project=…&status=done`) et « Sans date butée » (`/tasks?project=…&no_due_date=1`) sont des nombres cliquables si > 0.

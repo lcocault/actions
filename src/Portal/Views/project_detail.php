@@ -40,7 +40,7 @@ $none = $summary['total'] === 0;
 
 <section aria-labelledby="h-matrice">
   <h2 id="h-matrice">Matrice d'Eisenhower</h2>
-  <p class="hint">Actions à faire ou en cours ayant une date butée, selon leur importance (lignes) et le délai avant leur date butée (colonnes). Une action en retard figure dans la colonne « Moins d'une semaine ». Un nombre ouvre la liste de ces actions.</p>
+  <p class="hint">Actions à faire ou en cours ayant une date butée, selon leur importance (lignes) et leur échéance (colonnes). Un nombre ouvre la liste de ces actions.</p>
   <table class="matrix">
     <caption>Actions du projet par importance et par urgence, situation au <?= $e(\Actions\Portal\Labels::date($overview['today'])) ?></caption>
     <thead>

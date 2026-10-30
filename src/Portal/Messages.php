@@ -19,7 +19,7 @@ final class Messages
         'field_unknown' => 'Champ inconnu.',
         'field_type_invalid' => 'Valeur invalide.',
         'text_invalid' => 'Texte invalide.',
-        'urgency_invalid' => 'Échéance inconnue. Choisissez moins d\'une semaine, moins d\'un mois ou au-delà.',
+        'urgency_invalid' => 'Échéance inconnue. Choisissez en retard, moins d\'une semaine, moins d\'un mois ou au-delà.',
     ];
 
     public static function for(DomainError $e): string

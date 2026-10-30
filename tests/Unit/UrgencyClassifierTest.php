@@ -47,10 +47,10 @@ final class UrgencyClassifierTest extends TestCase
         self::assertSame(['column' => $column, 'late' => $late], UrgencyClassifier::classify($due, $today));
     }
 
-    public function testLateOnlyInWeekColumn(): void
+    public function testLateDatesUseTheirOwnColumn(): void
     {
         foreach (self::cases() as $name => [$today, $due, $column, $late]) {
-            self::assertTrue(!$late || $column === UrgencyClassifier::WEEK, $name);
+            self::assertSame($late ? UrgencyClassifier::LATE : $column, UrgencyClassifier::placement('todo', $due, $today)['column'], $name);
         }
     }
 
@@ -76,7 +76,7 @@ final class UrgencyClassifierTest extends TestCase
     public function testPlacementOfOpenTaskWithDateMatchesClassify(string $today, string $due, string $column, bool $late): void
     {
         foreach (['todo', 'in_progress'] as $status) {
-            self::assertSame(['zone' => 'grid', 'column' => $column, 'late' => $late], UrgencyClassifier::placement($status, $due, $today));
+            self::assertSame(['zone' => 'grid', 'column' => $late ? UrgencyClassifier::LATE : $column, 'late' => $late], UrgencyClassifier::placement($status, $due, $today));
         }
     }
 
