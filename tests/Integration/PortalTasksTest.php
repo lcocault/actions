@@ -240,7 +240,9 @@ final class PortalTasksTest extends DbTestCase
     public function testFilters(): void
     {
         $this->populate();
-        self::assertSame(['Pro todo', 'Pro encours', 'Pro finie', 'Perso todo', 'Perso finie'], $this->titles($this->get('/tasks')), 'sans filtre : tout, tri REST');
+        $default = $this->get('/tasks');
+        self::assertSame(['Pro todo', 'Pro encours', 'Perso todo'], $this->titles($default), 'sans filtre : tâches non terminées');
+        self::assertStringContainsString('href="/tasks?status=in_progress">Tâches en cours</a>', $default->body);
         self::assertSame(['Pro todo', 'Perso todo'], $this->titles($this->get('/tasks', ['status' => 'todo'])));
         self::assertSame(['Pro encours'], $this->titles($this->get('/tasks', ['status' => 'in_progress'])));
         self::assertSame(['Pro finie', 'Perso finie'], $this->titles($this->get('/tasks', ['status' => 'done'])));
