@@ -1,5 +1,10 @@
 # Journal des changements
 
+## 2026-10-31
+
+- Portail : la liste des tâches masque par défaut les tâches terminées; un état explicite, y compris « Terminées » ou « Tous », reste prioritaire. La navigation ajoute « Tâches en cours » (filtre `status=in_progress`). Aucune migration ni dépendance.
+- Vérifications : syntaxe PHP et `git diff --check` réussis; rendu direct du gabarit confirmant le lien de navigation. Test d’intégration ciblé tenté mais bloqué avant exécution : `vendor/autoload.php` absent; `composer install` n’a pas pu télécharger les dépendances, GitHub demandant une authentification.
+
 ## 2026-10-30
 
 - Matrice d’Eisenhower : ajout d’une colonne « En retard » dédiée; « Moins d’une semaine » couvre maintenant aujourd’hui à J+6. Les nombres restent cliquables vers les listes exactes; le filtre du portail accepte `urgency=late`. REST, MCP et données inchangés; aucune migration ni dépendance.

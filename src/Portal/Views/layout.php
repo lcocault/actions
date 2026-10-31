@@ -12,6 +12,7 @@
   <a class="brand" href="<?= $url('/tasks') ?>">Actions</a>
   <nav aria-label="Navigation principale">
     <a href="<?= $url('/tasks') ?>">Tâches</a>
+    <a href="<?= $url('/tasks', ['status' => 'in_progress']) ?>">Tâches en cours</a>
     <a href="<?= $url('/tasks/new') ?>">Nouvelle tâche</a>
     <a href="<?= $url('/projects') ?>">Projets</a>
   </nav>

@@ -60,7 +60,8 @@ final class TaskPages
 
     public function list(Request $request): Response
     {
-        $filters = ['status' => '', 'category' => '', 'project' => '', 'importance' => '', 'urgency' => '', 'no_due_date' => ($request->query['no_due_date'] ?? '') === '1', 'hide_done' => ($request->query['hide_done'] ?? '') === '1'];
+        $hideDone = $request->query['hide_done'] ?? (array_key_exists('status', $request->query) ? '' : '1');
+        $filters = ['status' => '', 'category' => '', 'project' => '', 'importance' => '', 'urgency' => '', 'no_due_date' => ($request->query['no_due_date'] ?? '') === '1', 'hide_done' => $hideDone === '1'];
         $urgency = $request->query['urgency'] ?? '';
         $criteria = [];
         foreach (['status', 'category', 'project', 'importance'] as $name) {
