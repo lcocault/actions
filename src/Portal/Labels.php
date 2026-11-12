@@ -121,4 +121,19 @@ final class Labels
 
         return $minutes . ($minutes === 1 ? ' minute' : ' minutes');
     }
+
+    public static function durationCompact(?int $minutes): string
+    {
+        if ($minutes === null) {
+            return '—';
+        }
+        if ($minutes < 60) {
+            return $minutes . 'min';
+        }
+
+        $hours = intdiv($minutes, 60);
+        $remainingMinutes = $minutes % 60;
+
+        return $hours . 'h' . ($remainingMinutes > 0 ? $remainingMinutes : '');
+    }
 }

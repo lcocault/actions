@@ -129,12 +129,12 @@ final class TaskRepository extends PdoRepository
      * Lecture minimale des tâches d'un projet pour la vue projet (sans actions requises), triées due_date croissante
      * (sans date en dernier), puis id.
      *
-     * @return list<array{id:int,title:string,status:string,importance:string,due_date:?string}>
+     * @return list<array{id:int,title:string,status:string,importance:string,due_date:?string,estimated_minutes:?int}>
      */
     public function findOverviewRows(int $projectId): array
     {
         $rows = $this->run(
-            "SELECT t.id, t.title, t.status, t.importance, to_char(t.due_date, 'YYYY-MM-DD') AS due_date"
+            "SELECT t.id, t.title, t.status, t.importance, to_char(t.due_date, 'YYYY-MM-DD') AS due_date, t.estimated_minutes"
             . ' FROM tasks t WHERE t.project_id = :project_id ORDER BY t.due_date ASC NULLS LAST, t.id ASC',
             ['project_id' => $projectId],
         )->fetchAll();
@@ -145,6 +145,7 @@ final class TaskRepository extends PdoRepository
             'status' => (string) $r['status'],
             'importance' => (string) $r['importance'],
             'due_date' => $r['due_date'] === null ? null : (string) $r['due_date'],
+            'estimated_minutes' => $r['estimated_minutes'] === null ? null : (int) $r['estimated_minutes'],
         ], $rows);
     }
 

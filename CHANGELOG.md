@@ -1,5 +1,10 @@
 # Journal des changements
 
+## 2026-11-12
+
+- Matrice d'Eisenhower : chaque case non vide affiche la somme des estimations de durée renseignées (minutes, rendues en `min`/`h`); les cases sans estimation affichent « — » et les cases vides n'affichent pas d'effort. Aucune migration ni dépendance.
+- Vérifications : `php -l` sur les sept fichiers PHP modifiés, `git diff --check`, formatage compact et rendu direct du gabarit vérifiés. PHPUnit ciblé non exécuté : `vendor/autoload.php` absent; pas de test PostgreSQL.
+
 ## 2026-10-31
 
 - Portail : la liste des tâches masque par défaut les tâches terminées; un état explicite, y compris « Terminées » ou « Tous », reste prioritaire. La navigation ajoute « Tâches en cours » (filtre `status=in_progress`). Aucune migration ni dépendance.
