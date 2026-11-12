@@ -15,6 +15,7 @@
     <a href="<?= $url('/tasks', ['status' => 'in_progress']) ?>">Tâches en cours</a>
     <a href="<?= $url('/tasks/new') ?>">Nouvelle tâche</a>
     <a href="<?= $url('/projects') ?>">Projets</a>
+    <a href="<?= $url('/matrix') ?>">Matrice globale</a>
   </nav>
 </header>
 <main id="contenu">

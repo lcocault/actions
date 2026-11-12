@@ -1616,3 +1616,9 @@ Tranche A : tout ce qui est « proposé » dans « Couche commune des tâches »
 ## Colonne « En retard » de la matrice — issue #2, 2026-10-30
 
 **Validé par la demande de l’issue #2; remplace pour la matrice le choix V5 du 2026-10-18.** La matrice du portail comporte désormais quatre colonnes dans cet ordre : « En retard », « Moins d’une semaine », « Moins d’un mois », « Au-delà ». Une échéance passée va uniquement dans « En retard »; « Moins d’une semaine » couvre aujourd’hui à J+6. Chaque nombre garde un lien vers la liste exacte de la case, et `GET /tasks?urgency=late` est ajouté au filtre d’urgence du portail. REST, MCP, schéma et données restent inchangés; aucune migration ni dépendance.
+
+## Matrice globale — issue #13, 2026-11-12
+
+**Validé par la demande de l’issue #13** (elle étend le périmètre auparavant exclu dans le backlog). Le portail ajoute `GET /matrix`, accessible depuis la navigation principale. Il reprend la grille et le traitement « hors matrice » des vues projet, mais agrège toutes les tâches, sans filtre de projet, donc les catégories Pro et Perso. Les liens de cellule et de « hors matrice » ouvrent les listes globales correspondantes. Les vues projet restent disponibles et inchangées.
+
+Le calcul reste dans `ProjectOverviewService` et utilise le même classement, le même jour de référence Europe/Paris et les mêmes règles pour les tâches terminées ou sans date. REST, MCP, schéma, données et dépendances ne changent pas; aucune migration.

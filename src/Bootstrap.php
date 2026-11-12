@@ -52,7 +52,7 @@ final class Bootstrap
         return new ProjectService(new ProjectRepository(self::connection($config)));
     }
 
-    /** Vue projet (synthèse et matrice). $today : jour de référence AAAA-MM-JJ, injectable (défaut : jour courant en Europe/Paris). */
+    /** Vues matricielles (projet et globale). $today : jour de référence AAAA-MM-JJ, injectable (défaut : jour courant en Europe/Paris). */
     public static function projectOverviewService(Config $config, ?\Closure $today = null): ProjectOverviewService
     {
         $connect = self::connection($config);
@@ -62,7 +62,7 @@ final class Bootstrap
 
     /**
      * $session : NativeSession par défaut (les tests passent une session en mémoire).
-     * $today : jour de référence de la vue projet, fixé par les tests.
+     * $today : jour de référence des vues matricielles, fixé par les tests.
      *
      * @param ?\Closure():string $today
      */

@@ -433,6 +433,26 @@ final class PortalProjectsTest extends DbTestCase
         self::assertSame(9, preg_match_all('#<td class="num">\s*<span>0<#', $html), 'neuf cases à 0 en texte');
     }
 
+    public function testGlobalMatrixIncludesProAndPersoProjects(): void
+    {
+        $this->seed('Perso', 'OPF', ['importance' => 'Critique', 'due_date' => '2026-10-19']);
+        $this->seed('Pro', 'MS-HR', ['importance' => 'Critique', 'due_date' => '2026-10-20']);
+        $done = $this->seed('Terminée', 'MS-HR', ['importance' => 'Critique', 'due_date' => '2026-10-01']);
+        $this->tasks->changeStatus($done['id'], 'in_progress');
+        $this->tasks->changeStatus($done['id'], 'done');
+        $this->seed('Sans date', 'OPF', ['importance' => 'Mineure']);
+
+        $r = $this->get('/matrix');
+        $this->assertHtml($r, 200);
+        self::assertStringContainsString('<h1>Matrice globale d\'Eisenhower</h1>', $r->body);
+        self::assertStringContainsString('Actions de tous les projets, Pro et Perso.', $r->body);
+        self::assertStringContainsString('<a href="/matrix">Matrice globale</a>', $r->body);
+        self::assertMatchesRegularExpression('#<a href="/tasks\?importance=Critique&amp;urgency=week">2<span class="visually-hidden">#', $r->body);
+        self::assertStringContainsString('href="/tasks?status=done"', $r->body);
+        self::assertStringContainsString('href="/tasks?no_due_date=1"', $r->body);
+        self::assertStringNotContainsString('project=', $r->body);
+    }
+
     // ----- Liens depuis les tâches -----
 
     public function testProjectNameLinksToTheProjectView(): void

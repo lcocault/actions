@@ -116,6 +116,9 @@ final class PortalAdapter
         if ($path === '/projects') {
             return ['GET' => fn (): Response => $this->projectPages->list(), 'POST' => fn (): Response => $this->projectPages->create($request)];
         }
+        if ($path === '/matrix') {
+            return ['GET' => fn (): Response => $this->projectPages->globalMatrix()];
+        }
         if ($path === '/projects/new') {
             return ['GET' => fn (): Response => $this->projectPages->newForm()];
         }
