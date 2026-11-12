@@ -2,6 +2,8 @@
 
 ## 2026-11-12
 
+- Matrice d'Eisenhower : ajout d’un séparateur « / » entre le nombre d’actions d’une case et sa durée estimée; aucun changement de données, de migration ou de dépendance.
+- Vérifications de cette correction : `php -l` sur le gabarit et le test, `git diff --check` réussis. Test PHPUnit ciblé non exécuté : `vendor/bin/phpunit` absent.
 - Matrice d'Eisenhower : chaque case non vide affiche la somme des estimations de durée renseignées (minutes, rendues en `min`/`h`); les cases sans estimation affichent « — » et les cases vides n'affichent pas d'effort. Aucune migration ni dépendance.
 - Vérifications : `php -l` sur les sept fichiers PHP modifiés, `git diff --check`, formatage compact et rendu direct du gabarit vérifiés. PHPUnit ciblé non exécuté : `vendor/autoload.php` absent; pas de test PostgreSQL.
 

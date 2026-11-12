@@ -63,7 +63,7 @@ $none = $summary['total'] === 0;
 <?php endif; ?>
         <td class="num">
 <?php if ($count > 0): ?>
-          <a href="<?= $url('/tasks', ['project' => $project['name'], 'importance' => $row['importance'], 'urgency' => $column]) ?>"><?= $e($count) ?><span class="visually-hidden"> <?= $e($what) ?></span><span class="effort" aria-hidden="true"><?= $e(\Actions\Portal\Labels::durationCompact($effort)) ?></span></a>
+          <a href="<?= $url('/tasks', ['project' => $project['name'], 'importance' => $row['importance'], 'urgency' => $column]) ?>"><?= $e($count) ?><span class="visually-hidden"> <?= $e($what) ?></span><span class="effort" aria-hidden="true"> / <?= $e(\Actions\Portal\Labels::durationCompact($effort)) ?></span></a>
 <?php else: ?>
           <span><?= $e($count) ?><span class="visually-hidden"> <?= $e($what) ?></span></span>
 <?php endif; ?>
