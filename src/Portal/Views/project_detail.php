@@ -56,11 +56,14 @@ $none = $summary['total'] === 0;
       <tr>
         <th scope="row"><?= $e($row['importance']) ?></th>
 <?php foreach ($overview['matrix']['columns'] as $column): ?>
-<?php $count = $row['cells'][$column]['count']; ?>
+<?php $cell = $row['cells'][$column]; $count = $cell['count']; $effort = $cell['estimated_minutes']; ?>
 <?php $what = \Actions\Portal\Labels::actionWord($count) . ', importance ' . $row['importance'] . ', échéance ' . \Actions\Portal\Labels::urgencyLower($column); ?>
+<?php if ($count > 0): ?>
+<?php $what .= ', effort estimé ' . ($effort === null ? 'non renseigné' : \Actions\Portal\Labels::duration($effort)); ?>
+<?php endif; ?>
         <td class="num">
 <?php if ($count > 0): ?>
-          <a href="<?= $url('/tasks', ['project' => $project['name'], 'importance' => $row['importance'], 'urgency' => $column]) ?>"><?= $e($count) ?><span class="visually-hidden"> <?= $e($what) ?></span></a>
+          <a href="<?= $url('/tasks', ['project' => $project['name'], 'importance' => $row['importance'], 'urgency' => $column]) ?>"><?= $e($count) ?><span class="visually-hidden"> <?= $e($what) ?></span><span class="effort" aria-hidden="true"><?= $e(\Actions\Portal\Labels::durationCompact($effort)) ?></span></a>
 <?php else: ?>
           <span><?= $e($count) ?><span class="visually-hidden"> <?= $e($what) ?></span></span>
 <?php endif; ?>

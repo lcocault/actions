@@ -152,6 +152,22 @@ final class ProjectOverviewServiceTest extends DbTestCase
         $this->assertInvariants($other);
     }
 
+    public function testCellEffortSumsKnownEstimates(): void
+    {
+        $this->task('estimate-1', 'Critique', '2026-10-18', 'todo', 'OPF', ['estimated_minutes' => 90]);
+        $this->task('estimate-2', 'Critique', '2026-10-18', 'todo', 'OPF', ['estimated_minutes' => 30]);
+        $this->task('estimate-missing', 'Critique', '2026-10-18');
+        $this->task('all-estimates-missing', 'Majeure', '2026-10-18');
+
+        $ov = $this->ov();
+        $critique = $ov['matrix']['rows'][0]['cells']['week'];
+        self::assertSame(3, $critique['count']);
+        self::assertSame(120, $critique['estimated_minutes']);
+        self::assertSame([90, 30, null], array_column($critique['tasks'], 'estimated_minutes'));
+        self::assertNull($ov['matrix']['rows'][1]['cells']['week']['estimated_minutes']);
+        self::assertNull($ov['matrix']['rows'][1]['cells']['late']['estimated_minutes']);
+    }
+
     public function testTasksOfACellAreOrderedByDueDateThenId(): void
     {
         $this->task('b', 'Majeure', '2026-10-20');

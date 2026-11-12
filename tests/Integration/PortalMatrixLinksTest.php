@@ -170,6 +170,18 @@ final class PortalMatrixLinksTest extends DbTestCase
         self::assertSame(4, count(array_filter($cells, static fn (array $c): bool => $c[0] === 0 && $c[1] === null)), 'quatre cases vides en texte');
     }
 
+    public function testNonEmptyCellsDisplayTheirEstimatedEffort(): void
+    {
+        $this->seed('Avec-estimation', 'OPF', 'Critique', '2026-10-18', ['estimated_minutes' => 90]);
+        $this->seed('Sans-estimation', 'OPF', 'Majeure', '2026-10-18');
+
+        $html = $this->overviewPage();
+        self::assertStringContainsString('class="effort" aria-hidden="true">1h30</span>', $html);
+        self::assertStringContainsString('effort estimé 90 minutes', $html);
+        self::assertStringContainsString('class="effort" aria-hidden="true">—</span>', $html);
+        self::assertSame(2, substr_count($html, 'class="effort"'), 'les cases vides ne portent aucun effort');
+    }
+
     public function testCellListsHoldExactlyTheTasksOfTheCell(): void
     {
         $this->populate();

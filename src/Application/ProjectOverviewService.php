@@ -9,8 +9,8 @@ namespace Actions\Application;
  * lecture des tâches du projet (cellules + hors grille = total, par construction).
  *
  * Forme (`ProjectOverview`) : project (Project), today (AAAA-MM-JJ), summary {todo,in_progress,done,total},
- * matrix {columns, rows[{importance, cells{late,week,month,later}}]}, outside {done:{count}, no_due_date:Cell}.
- * Cell = {count, tasks[{id,title,status,due_date,late}]}.
+ * matrix {columns, rows[{importance, cells{late,week,month,later}}]}, outside {done:{count}, no_due_date:{count,tasks}}.
+ * MatrixCell = {count, estimated_minutes, tasks[{id,title,status,due_date,late,estimated_minutes}]}.
  */
 final class ProjectOverviewService
 {
@@ -46,7 +46,7 @@ final class ProjectOverviewService
         $cells = [];
         foreach (TaskValidator::IMPORTANCES as $importance) {
             foreach (UrgencyClassifier::COLUMNS as $column) {
-                $cells[$importance][$column] = ['count' => 0, 'tasks' => []];
+                $cells[$importance][$column] = ['count' => 0, 'estimated_minutes' => null, 'tasks' => []];
             }
         }
         $doneCount = 0;
@@ -66,7 +66,17 @@ final class ProjectOverviewService
                 continue;
             }
             $cell = &$cells[$row['importance']][(string) $place['column']];
-            $cell['tasks'][] = ['id' => $row['id'], 'title' => $row['title'], 'status' => $row['status'], 'due_date' => $row['due_date'], 'late' => $place['late']];
+            $cell['tasks'][] = [
+                'id' => $row['id'],
+                'title' => $row['title'],
+                'status' => $row['status'],
+                'due_date' => $row['due_date'],
+                'late' => $place['late'],
+                'estimated_minutes' => $row['estimated_minutes'],
+            ];
+            if ($row['estimated_minutes'] !== null) {
+                $cell['estimated_minutes'] = ($cell['estimated_minutes'] ?? 0) + $row['estimated_minutes'];
+            }
             ++$cell['count'];
             unset($cell);
         }

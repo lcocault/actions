@@ -49,4 +49,12 @@ final class LabelsTest extends TestCase
         self::assertSame('1 minute', Labels::duration(1));
         self::assertSame('', Labels::duration(null));
     }
+
+    public function testCompactDuration(): void
+    {
+        self::assertSame('45min', Labels::durationCompact(45));
+        self::assertSame('1h', Labels::durationCompact(60));
+        self::assertSame('1h30', Labels::durationCompact(90));
+        self::assertSame('—', Labels::durationCompact(null));
+    }
 }
