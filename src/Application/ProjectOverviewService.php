@@ -5,9 +5,10 @@ declare(strict_types=1);
 namespace Actions\Application;
 
 /**
- * Vue d'un projet : synthèse par état et matrice d'Eisenhower (importance x urgence), calculées sur une seule
- * lecture des tâches du projet (cellules + hors grille = total, par construction).
+ * Synthèse par état et matrice d'Eisenhower (importance x urgence), calculées sur une seule lecture des tâches
+ * d'un projet ou de tous les projets (cellules + hors grille = total, par construction).
  *
+ * `overview()` renvoie `ProjectOverview`; `globalOverview()` renvoie les mêmes champs sans `project`.
  * Forme (`ProjectOverview`) : project (Project), today (AAAA-MM-JJ), summary {todo,in_progress,done,total},
  * matrix {columns, rows[{importance, cells{late,week,month,later}}]}, outside {done:{count}, no_due_date:{count,tasks}}.
  * MatrixCell = {count, estimated_minutes, tasks[{id,title,status,due_date,late,estimated_minutes}]}.
@@ -40,8 +41,29 @@ final class ProjectOverviewService
     {
         $project = $this->projects->find($id) ?? throw new ProjectNotFound($id);
         $today = ($this->today)();
-        $rows = $this->tasks->findOverviewRows($id);
+        $overview = $this->summarize($this->tasks->findOverviewRows($id), $today);
 
+        return ['project' => $project, 'today' => $today] + $overview;
+    }
+
+    /**
+     * Matrice de toutes les tâches, sans synthèse de projet.
+     *
+     * @return array<string,mixed>
+     */
+    public function globalOverview(): array
+    {
+        $today = ($this->today)();
+
+        return ['today' => $today] + $this->summarize($this->tasks->findOverviewRows(null), $today);
+    }
+
+    /**
+     * @param list<array<string,mixed>> $rows
+     * @return array<string,mixed>
+     */
+    private function summarize(array $rows, string $today): array
+    {
         $summary = ['todo' => 0, 'in_progress' => 0, 'done' => 0, 'total' => 0];
         $cells = [];
         foreach (TaskValidator::IMPORTANCES as $importance) {
@@ -87,8 +109,6 @@ final class ProjectOverviewService
         }
 
         return [
-            'project' => $project,
-            'today' => $today,
             'summary' => $summary,
             'matrix' => ['columns' => UrgencyClassifier::COLUMNS, 'rows' => $matrixRows],
             'outside' => ['done' => ['count' => $doneCount], 'no_due_date' => $noDueDate],

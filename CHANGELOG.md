@@ -2,6 +2,8 @@
 
 ## 2026-11-12
 
+- Portail : accès « Matrice globale » depuis la navigation; la grille agrège les tâches de tous les projets, Pro et Perso. Les matrices projet restent disponibles. Aucun changement de données, de migration ou de dépendance.
+- Vérifications de cette tranche : `php -l` sur les fichiers PHP modifiés, `git diff --check` et rendu direct du gabarit global réussis. PHPUnit ciblé bloqué par l’absence de `vendor/autoload.php`; PostgreSQL local indisponible.
 - Matrice d'Eisenhower : ajout d’un séparateur « / » entre le nombre d’actions d’une case et sa durée estimée; aucun changement de données, de migration ou de dépendance.
 - Vérifications de cette correction : `php -l` sur le gabarit et le test, `git diff --check` réussis. Test PHPUnit ciblé non exécuté : `vendor/bin/phpunit` absent.
 - Matrice d'Eisenhower : chaque case non vide affiche la somme des estimations de durée renseignées (minutes, rendues en `min`/`h`); les cases sans estimation affichent « — » et les cases vides n'affichent pas d'effort. Aucune migration ni dépendance.

@@ -42,6 +42,13 @@ final class ProjectPages
         return $this->renderer->page(200, 'Projet ' . $overview['project']['name'], 'project_detail', ['overview' => $overview]);
     }
 
+    public function globalMatrix(): Response
+    {
+        return $this->renderer->page(200, 'Matrice globale d’Eisenhower', 'global_matrix', [
+            'overview' => $this->overview->globalOverview(),
+        ]);
+    }
+
     public function newForm(): Response
     {
         return $this->form(200, 'Nouveau projet', '/projects', 'Créer le projet', '/projects', ['name' => '', 'category' => ''], null, null);

@@ -237,6 +237,24 @@ final class ProjectOverviewServiceTest extends DbTestCase
         $this->overview->overview(999999);
     }
 
+    public function testGlobalOverviewIncludesTasksFromProAndPersoProjects(): void
+    {
+        $this->task('perso', 'Critique', '2026-10-19', 'todo', 'OPF');
+        $this->task('pro', 'Critique', '2026-10-20', 'todo', 'MS-HR');
+        $this->task('terminée', 'Majeure', '2026-10-01', 'done', 'MS-HR');
+        $this->task('sans date', 'Mineure', null, 'todo', 'OPF');
+
+        $overview = $this->overview->globalOverview();
+
+        self::assertSame(['todo' => 3, 'in_progress' => 0, 'done' => 1, 'total' => 4], $overview['summary']);
+        self::assertSame(['perso', 'pro'], array_column($overview['matrix']['rows'][0]['cells']['week']['tasks'], 'title'));
+        self::assertSame(2, $overview['matrix']['rows'][0]['cells']['week']['count']);
+        self::assertSame(1, $overview['outside']['done']['count']);
+        self::assertSame(['sans date'], array_column($overview['outside']['no_due_date']['tasks'], 'title'));
+        self::assertSame(self::TODAY, $overview['today']);
+        self::assertArrayNotHasKey('project', $overview);
+    }
+
     public function testDefaultClockReturnsAValidDay(): void
     {
         $service = Bootstrap::projectOverviewService($this->config);
