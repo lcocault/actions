@@ -172,13 +172,13 @@ final class PortalMatrixLinksTest extends DbTestCase
 
     public function testNonEmptyCellsDisplayTheirEstimatedEffort(): void
     {
-        $this->seed('Avec-estimation', 'OPF', 'Critique', '2026-10-18', ['estimated_minutes' => 90]);
+        $this->seed('Avec-estimation', 'OPF', 'Critique', '2026-10-18', ['estimated_minutes' => 390]);
         $this->seed('Sans-estimation', 'OPF', 'Majeure', '2026-10-18');
 
         $html = $this->overviewPage();
-        self::assertStringContainsString('class="effort" aria-hidden="true">1h30</span>', $html);
-        self::assertStringContainsString('effort estimé 90 minutes', $html);
-        self::assertStringContainsString('class="effort" aria-hidden="true">—</span>', $html);
+        self::assertMatchesRegularExpression('#<td class="num">\s*<a href="[^"]+">1<span class="visually-hidden">.*?</span><span class="effort" aria-hidden="true"> / 6h30</span></a>#s', $html);
+        self::assertStringContainsString('effort estimé 390 minutes', $html);
+        self::assertStringContainsString('class="effort" aria-hidden="true"> / —</span>', $html);
         self::assertSame(2, substr_count($html, 'class="effort"'), 'les cases vides ne portent aucun effort');
     }
 
